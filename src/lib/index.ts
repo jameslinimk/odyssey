@@ -1,5 +1,5 @@
-import { AnimatedSprite, Application } from "pixi.js"
-import { BOW3 } from "./animations.js"
+import { Application } from "pixi.js"
+import { drawLayers, odysseus } from "./animations.js"
 
 const app = new Application({
 	backgroundColor: 0x1099bb,
@@ -11,9 +11,10 @@ document.body.appendChild(app.view as any)
 // 	elapsed += dt
 // })
 
-const anim = new AnimatedSprite(BOW3.animations.shoot_up_up)
-anim.animationSpeed = 0.1666
-anim.play()
-anim.loop = false
+drawLayers("shoot_straight_right", app.stage, odysseus, (s) => {
+	s.animationSpeed = 0.1666
+	s.play()
+	s.loop = false
+})
 
-app.stage.addChild(anim)
+console.log(odysseus)

@@ -1,4 +1,4 @@
-import { BaseTexture, Spritesheet, type ISpritesheetData, type ISpritesheetFrameData } from "pixi.js"
+import { AnimatedSprite, BaseTexture, Container, Spritesheet, Texture, type ISpritesheetData, type ISpritesheetFrameData } from "pixi.js"
 
 const cross = <T, U>(a: T[], b: U[]) => {
 	const result = []
@@ -59,10 +59,10 @@ interface Meta {
 }
 
 enum Directions {
-	Up = "up",
 	Down = "down",
-	Left = "left",
+	Up = "up",
 	Right = "right",
+	Left = "left",
 }
 
 const sheet = (meta: Meta, data: SpritesheetData): ISpritesheetData => {
@@ -78,7 +78,7 @@ const sheet = (meta: Meta, data: SpritesheetData): ISpritesheetData => {
 				acc[`${name}_${dir}`] = []
 				for (let j = 0; j < length; j++) {
 					const s = `${start[0] + j},${start[1] + i}`
-					acc[`${name}_${dir}`].push(s)
+					acc[`${name}_${dir}`].push(`${meta.image!}_${s}`)
 					used.add(s)
 				}
 			})
@@ -93,7 +93,7 @@ const sheet = (meta: Meta, data: SpritesheetData): ISpritesheetData => {
 			(acc, cur) => {
 				const [x, y] = cur
 				if (!used.has(cur.toString())) return acc
-				acc[cur.toString()] = {
+				acc[`${meta.image!}_${cur.toString()}`] = {
 					frame: { x: x * data.tileSize, y: y * data.tileSize, w: data.tileSize, h: data.tileSize },
 					sourceSize: { w: data.tileSize, h: data.tileSize },
 					spriteSourceSize: { x: 0, y: 0, w: data.tileSize, h: data.tileSize },
@@ -112,6 +112,11 @@ const parse = async (sheet: ISpritesheetData) => {
 	const spritesheet = new Spritesheet<any>(BaseTexture.from(sheet.meta.image!), sheet)
 	await spritesheet.parse()
 	return spritesheet
+}
+
+const parseAll = async <T extends string>(sheets: Record<T, ISpritesheetData>): Promise<Record<T, Spritesheet<any>>> => {
+	const spritesheets = Object.entries(sheets).map(([k, v]: any) => parse(v).then((s) => [k, s]))
+	return Object.fromEntries(await Promise.all(spritesheets))
 }
 
 const pl = (n: number) => n.toString().padStart(2, "0")
@@ -172,44 +177,95 @@ const fullSheets = (info: Linfo, data: ISpritesheetData) => {
 	return sheets
 }
 
-const OVER_MAP = {
-	"0bas": [new Set(["1,0", "2,0", "3,0", "4,0", "0,1", "6,1", "2,2", "4,2", "2,3", "4,3"]), new Set(["0,1", "1,1", "2,1", "3,1", "4,1", "5,1", "6,1", "7,1", "8,1"])],
+const OVER_BOW = new Set([
+	"draw_down",
+	"draw_up",
+	"parry_down",
+	"dodge_down",
+	"idle_down",
+	"move_down",
+	"crouch_down",
+	"retreat_down",
+	"shoot_up_down",
+	"shoot_up_right",
+	"shoot_up_left",
+	"shoot_straight_down",
+	"shoot_straight_right",
+	"shoot_straight_left",
+])
+
+const OVER_QUIV = new Set(["draw_up", "parry_up", "dodge_up", "hurt_up", "dead_up", "idle_up", "move_up", "crouch_up", "retreat_up", "lunge_up", "shoot_up_up", "shoot_straight_up"])
+
+class LayeredAnim {
+	anims: AnimatedSprite[] = []
+	constructor(layers: Texture[][], stage: Container, caller?: (sprite: AnimatedSprite) => any) {
+		for (const layer of layers) {
+			const anim = new AnimatedSprite(layer)
+			if (caller) caller(anim)
+			this.anims.push(anim)
+			stage.addChild(anim)
+		}
+	}
+
+	get first() {
+		return this.anims[0]
+	}
+
+	do(caller: (sprite: AnimatedSprite) => any) {
+		this.anims.forEach((s) => caller(s))
+	}
 }
 
-const s = fullSheets(
-	{
-		"0bas": { type: "humn", v: 0 },
-		"1out": { type: "boxr", v: 1 },
-		"4har": { type: "bob1", v: 1 },
-		"6tla": { type: "bo01", v: 1 },
-		"7tlb": { type: "qv01", v: 1 },
-	},
-	sheet(
+export const drawLayers = (animation: string, stage: Container, data: typeof odysseus, caller?: (sprite: AnimatedSprite) => any) => {
+	const layer = ["0bas", "1out", "4har"]
+
+	if (OVER_BOW.has(animation)) layer.push("6tla")
+	else layer.unshift("6tla")
+
+	if (OVER_QUIV.has(animation)) layer.push("7tlb")
+	else layer.unshift("7tlb")
+
+	return new LayeredAnim(
+		layer.map((l) => data[l as (typeof LAYERS)[number]].animations[animation]),
+		stage,
+		caller,
+	)
+}
+
+export const odysseus = await parseAll(
+	fullSheets(
 		{
-			image: "bow_combat/char_a_pBOW3/char_a_pBOW3_0bas_humn_v00.png",
-			format: "RGBA8888",
-			size: { w: 512, h: 512 },
-			scale: 1 as any,
+			"0bas": { type: "humn", v: 0 },
+			"1out": { type: "boxr", v: 1 },
+			"4har": { type: "dap1", v: 3 },
+			"6tla": { type: "bo03", v: 1 },
+			"7tlb": { type: "qv01", v: 1 },
 		},
-		{
-			tileSize: 64,
-			animations: [
-				{
-					start: [0, 0],
-					length: 8,
-					name: "shoot_up",
-				},
-				{
-					start: [0, 4],
-					length: 8,
-					name: "shoot_straight",
-				},
-			],
-		},
+		sheet(
+			{
+				image: "bow_combat/char_a_pBOW3/char_a_pBOW3_0bas_humn_v00.png",
+				format: "RGBA8888",
+				size: { w: 512, h: 512 },
+				scale: 1 as any,
+			},
+			{
+				tileSize: 64,
+				animations: [
+					{
+						start: [0, 0],
+						length: 8,
+						name: "shoot_up",
+					},
+					{
+						start: [0, 4],
+						length: 8,
+						name: "shoot_straight",
+					},
+				],
+			},
+		),
 	),
 )
-
-console.log(s)
 
 // export const BOW1 = await parse(
 // 	sheet(
