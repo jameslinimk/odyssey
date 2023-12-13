@@ -1,22 +1,15 @@
-import { AnimatedSprite, BaseTexture, Container, Spritesheet, Texture, type ISpritesheetData, type ISpritesheetFrameData } from "pixi.js"
-
-const cross = <T, U>(a: T[], b: U[]) => {
-	const result = []
-	for (let i = 0; i < a.length; i++) {
-		for (let j = 0; j < b.length; j++) {
-			result.push([a[i], b[j]])
-		}
-	}
-	return result as [T, U][]
-}
-
-const crossNumbers = (w: number, h: number) => cross([...Array(w).keys()], [...Array(h).keys()])
+import { app } from "$lib"
+import { AnimatedSprite, BaseTexture, Spritesheet, Texture, type ISpritesheetData, type ISpritesheetFrameData } from "pixi.js"
 
 interface SpritesheetData {
 	tileSize: number
 	animations: {
 		start: [number, number]
 		length: number
+		name: string
+	}[]
+	rawAnimations?: {
+		frames: [number, number][]
 		name: string
 	}[]
 }
@@ -58,7 +51,7 @@ interface Meta {
 	version?: string
 }
 
-enum Directions {
+export enum Directions {
 	Down = "down",
 	Up = "up",
 	Right = "right",
@@ -67,32 +60,36 @@ enum Directions {
 
 const sheet = (meta: Meta, data: SpritesheetData): ISpritesheetData => {
 	if (!meta?.size) throw new Error("No size provided")
-	const height = meta.size.h / data.tileSize
-	const width = meta.size.w / data.tileSize
 
-	const used = new Set<string>()
+	const used: [number, number][] = []
 	const animations = data.animations.reduce(
 		(acc, cur) => {
 			const { name, start, length } = cur
 			Object.values(Directions).forEach((dir, i) => {
 				acc[`${name}_${dir}`] = []
 				for (let j = 0; j < length; j++) {
-					const s = `${start[0] + j},${start[1] + i}`
-					acc[`${name}_${dir}`].push(`${meta.image!}_${s}`)
-					used.add(s)
+					const s: [number, number] = [start[0] + j, start[1] + i]
+					acc[`${name}_${dir}`].push(`${meta.image!}_${s.toString()}`)
+					used.push(s)
 				}
 			})
 			return acc
 		},
 		{} as Record<string, string[]>,
 	)
+	if (data.rawAnimations) {
+		data.rawAnimations.forEach((anim) => {
+			const { name, frames } = anim
+			animations[name] = frames.map((f) => `${meta.image!}_${f.toString()}`)
+			used.push(...frames)
+		})
+	}
 
 	return {
 		meta,
-		frames: crossNumbers(width, height).reduce(
+		frames: used.reduce(
 			(acc, cur) => {
 				const [x, y] = cur
-				if (!used.has(cur.toString())) return acc
 				acc[`${meta.image!}_${cur.toString()}`] = {
 					frame: { x: x * data.tileSize, y: y * data.tileSize, w: data.tileSize, h: data.tileSize },
 					sourceSize: { w: data.tileSize, h: data.tileSize },
@@ -123,12 +120,17 @@ const pl = (n: number) => n.toString().padStart(2, "0")
 
 export const LAYERS = ["0bas", "1out", "4har", "6tla", "7tlb"] as const
 export const V_MAP = {
-	"0bas": [0],
+	"0bas": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 	"1out": [1],
 	"4har": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 	"6tla": [1, 2, 3, 4, 5],
 	"7tlb": [1, 2, 3, 4, 5, 6, 7, 8],
 } as const
+const NEW_V_MAP = {
+	"0bas": {
+		humn: [0, 1],
+	},
+}
 export const T_MAP = {
 	"0bas": ["humn"],
 	"1out": ["boxr", "undi"],
@@ -160,11 +162,12 @@ interface Linfo {
 	}
 }
 
-const fullSheets = (info: Linfo, data: ISpritesheetData) => {
+const fullSheets = (info: Linfo, data: ISpritesheetData, skip: (typeof LAYERS)[number][] = []) => {
 	const sheets = {} as Record<(typeof LAYERS)[number], ISpritesheetData>
 	const baseFolder = data.meta.image!.split("/").slice(0, -1).join("/")
 	const baseName = data.meta.image!.split("/").slice(-1)[0].split(".")[0].split("_0bas")[0]
 	LAYERS.forEach((l) => {
+		if (skip.includes(l)) return
 		const { type, v } = info[l]
 		sheets[l] = {
 			...data,
@@ -196,14 +199,17 @@ const OVER_BOW = new Set([
 
 const OVER_QUIV = new Set(["draw_up", "parry_up", "dodge_up", "hurt_up", "dead_up", "idle_up", "move_up", "crouch_up", "retreat_up", "lunge_up", "shoot_up_up", "shoot_straight_up"])
 
-class LayeredAnim {
+export class LayeredAnim {
 	anims: AnimatedSprite[] = []
-	constructor(layers: Texture[][], stage: Container, caller?: (sprite: AnimatedSprite) => any) {
+	constructor(
+		public anim: string,
+		layers: Texture[][],
+		caller?: (sprite: AnimatedSprite) => any,
+	) {
 		for (const layer of layers) {
 			const anim = new AnimatedSprite(layer)
 			if (caller) caller(anim)
 			this.anims.push(anim)
-			stage.addChild(anim)
 		}
 	}
 
@@ -214,9 +220,19 @@ class LayeredAnim {
 	do(caller: (sprite: AnimatedSprite) => any) {
 		this.anims.forEach((s) => caller(s))
 	}
+
+	add() {
+		this.do((s) => app.stage.addChild(s))
+	}
+
+	rem() {
+		this.do((s) => app.stage.removeChild(s))
+	}
 }
 
-export const drawLayers = (animation: string, stage: Container, data: typeof odysseus, caller?: (sprite: AnimatedSprite) => any) => {
+export const drawLayers = (animation: string, caller?: (sprite: AnimatedSprite) => any) => {
+	const data = getSheet(animation)
+	const skips: string[] = LAYERS.filter((l) => !Object.keys(data).includes(l))
 	const layer = ["0bas", "1out", "4har"]
 
 	if (OVER_BOW.has(animation)) layer.push("6tla")
@@ -226,24 +242,198 @@ export const drawLayers = (animation: string, stage: Container, data: typeof ody
 	else layer.unshift("7tlb")
 
 	return new LayeredAnim(
-		layer.map((l) => data[l as (typeof LAYERS)[number]].animations[animation]),
-		stage,
+		animation,
+		layer.filter((l) => !skips.includes(l)).map((l) => data[l as (typeof LAYERS)[number]].animations[animation]),
 		caller,
 	)
 }
 
-export const odysseus = await parseAll(
+const ODYSSEUS_CONF: Linfo = {
+	"0bas": { type: "humn", v: 0 },
+	"1out": { type: "boxr", v: 1 },
+	"4har": { type: "dap1", v: 3 },
+	"6tla": { type: "bo03", v: 1 },
+	"7tlb": { type: "qv01", v: 1 },
+}
+
+const confToPath = (conf: Linfo, page: number, customPage = "") => {
+	return `char_a_p${customPage}${page}_0bas_${conf["0bas"].type}_v${pl(conf["0bas"].v)}.png`
+}
+
+export const getSheet = (anim: string) => {
+	const ONE = ["draw", "parry", "dodge", "hurt", "dead"]
+	const TWO = ["idle", "move", "crouch", "retreat", "lunge"]
+	const THREE = ["shoot_up", "shoot_straight"]
+	const RUN = ["run"]
+
+	anim = anim.split("_").slice(0, -1).join("_")
+
+	if (ONE.includes(anim)) return odysseus_1
+	if (TWO.includes(anim)) return odysseus_2
+	if (THREE.includes(anim)) return odysseus_3
+	if (RUN.includes(anim)) return run
+	throw new Error("Unknown animation")
+}
+
+const run = await parseAll(
 	fullSheets(
-		{
-			"0bas": { type: "humn", v: 0 },
-			"1out": { type: "boxr", v: 1 },
-			"4har": { type: "dap1", v: 3 },
-			"6tla": { type: "bo03", v: 1 },
-			"7tlb": { type: "qv01", v: 1 },
-		},
+		ODYSSEUS_CONF,
 		sheet(
 			{
-				image: "bow_combat/char_a_pBOW3/char_a_pBOW3_0bas_humn_v00.png",
+				image: `sprites/char_a_p1/${confToPath(ODYSSEUS_CONF, 1)}`,
+				format: "RGBA8888",
+				size: { w: 512, h: 512 },
+				scale: 1 as any,
+			},
+			{
+				tileSize: 64,
+				animations: [],
+				rawAnimations: [
+					{
+						frames: [
+							[0, 4],
+							[1, 4],
+							[6, 4],
+							[3, 4],
+							[4, 4],
+							[7, 4],
+						],
+						name: "run_down",
+					},
+					{
+						frames: [
+							[0, 5],
+							[1, 5],
+							[6, 5],
+							[3, 5],
+							[4, 5],
+							[7, 5],
+						],
+						name: "run_up",
+					},
+					{
+						frames: [
+							[0, 6],
+							[1, 6],
+							[6, 6],
+							[3, 6],
+							[4, 6],
+							[7, 6],
+						],
+						name: "run_right",
+					},
+					{
+						frames: [
+							[0, 7],
+							[1, 7],
+							[6, 7],
+							[3, 7],
+							[4, 7],
+							[7, 7],
+						],
+						name: "run_left",
+					},
+				],
+			},
+		),
+		["6tla", "7tlb"],
+	),
+)
+
+const odysseus_1 = await parseAll(
+	fullSheets(
+		ODYSSEUS_CONF,
+		sheet(
+			{
+				image: `sprites/char_a_pBOW1/${confToPath(ODYSSEUS_CONF, 1, "BOW")}`,
+				format: "RGBA8888",
+				size: { w: 512, h: 512 },
+				scale: 1 as any,
+			},
+			{
+				tileSize: 64,
+				animations: [
+					{
+						start: [0, 0],
+						length: 3,
+						name: "draw",
+					},
+					{
+						start: [3, 0],
+						length: 1,
+						name: "parry",
+					},
+					{
+						start: [4, 0],
+						length: 1,
+						name: "dodge",
+					},
+					{
+						start: [5, 0],
+						length: 1,
+						name: "hurt",
+					},
+					{
+						start: [6, 0],
+						length: 2,
+						name: "dead",
+					},
+				],
+			},
+		),
+	),
+)
+
+const odysseus_2 = await parseAll(
+	fullSheets(
+		ODYSSEUS_CONF,
+		sheet(
+			{
+				image: `sprites/char_a_pBOW2/${confToPath(ODYSSEUS_CONF, 2, "BOW")}`,
+				format: "RGBA8888",
+				size: { w: 512, h: 512 },
+				scale: 1 as any,
+			},
+			{
+				tileSize: 64,
+				animations: [
+					{
+						start: [0, 0],
+						length: 4,
+						name: "idle",
+					},
+					{
+						start: [4, 0],
+						length: 4,
+						name: "move",
+					},
+					{
+						start: [0, 4],
+						length: 1,
+						name: "crouch",
+					},
+					{
+						start: [1, 4],
+						length: 1,
+						name: "retreat",
+					},
+					{
+						start: [2, 4],
+						length: 1,
+						name: "lunge",
+					},
+				],
+			},
+		),
+	),
+)
+
+const odysseus_3 = await parseAll(
+	fullSheets(
+		ODYSSEUS_CONF,
+		sheet(
+			{
+				image: `sprites/char_a_pBOW3/${confToPath(ODYSSEUS_CONF, 3, "BOW")}`,
 				format: "RGBA8888",
 				size: { w: 512, h: 512 },
 				scale: 1 as any,
@@ -266,111 +456,3 @@ export const odysseus = await parseAll(
 		),
 	),
 )
-
-// export const BOW1 = await parse(
-// 	sheet(
-// 		{
-// 			image: "bow_combat/char_a_pBOW1/char_a_pBOW1_0bas_humn_v00.png",
-// 			format: "RGBA8888",
-// 			size: { w: 512, h: 512 },
-// 			scale: 1 as any,
-// 		},
-// 		{
-// 			tileSize: 64,
-// 			animations: [
-// 				{
-// 					start: [0, 0],
-// 					length: 3,
-// 					name: "draw",
-// 				},
-// 				{
-// 					start: [3, 0],
-// 					length: 1,
-// 					name: "parry",
-// 				},
-// 				{
-// 					start: [4, 0],
-// 					length: 1,
-// 					name: "dodge",
-// 				},
-// 				{
-// 					start: [5, 0],
-// 					length: 1,
-// 					name: "hurt",
-// 				},
-// 				{
-// 					start: [6, 0],
-// 					length: 2,
-// 					name: "dead",
-// 				},
-// 			],
-// 		},
-// 	),
-// )
-
-// export const BOW2 = await parse(
-// 	sheet(
-// 		{
-// 			image: "bow_combat/char_a_pBOW2/char_a_pBOW2_0bas_humn_v00.png",
-// 			format: "RGBA8888",
-// 			size: { w: 512, h: 512 },
-// 			scale: 1 as any,
-// 		},
-// 		{
-// 			tileSize: 64,
-// 			animations: [
-// 				{
-// 					start: [0, 0],
-// 					length: 4,
-// 					name: "idle",
-// 				},
-// 				{
-// 					start: [4, 0],
-// 					length: 4,
-// 					name: "move",
-// 				},
-// 				{
-// 					start: [0, 4],
-// 					length: 1,
-// 					name: "crouch",
-// 				},
-// 				{
-// 					start: [1, 4],
-// 					length: 1,
-// 					name: "retreat",
-// 				},
-// 				{
-// 					start: [2, 4],
-// 					length: 1,
-// 					name: "lunge",
-// 				},
-// 			],
-// 		},
-// 	),
-// )
-
-// export const BOW3 = await parse(
-// 	sheet(
-// 		{
-// 			image: "bow_combat/char_a_pBOW3/char_a_pBOW3_0bas_humn_v00.png",
-// 			format: "RGBA8888",
-// 			size: { w: 512, h: 512 },
-// 			scale: 1 as any,
-// 		},
-// 		{
-// 			tileSize: 64,
-// 			animations: [
-// 				{
-// 					start: [0, 0],
-// 					length: 8,
-// 					name: "shoot_up",
-// 				},
-// 				{
-// 					start: [0, 4],
-// 					length: 8,
-// 					name: "shoot_straight",
-// 				},
-// 			],
-// 		},
-// 	),
-// )
