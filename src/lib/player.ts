@@ -161,7 +161,14 @@ export class Player {
 
 	attackMode: "bow" | "pol" = "bow"
 	switching = false
+	lastSwitch = -Infinity
+	switchCooldown = 20
 
+	staggered = false
+	endStagger = -Infinity
+	maxStagger = 100
+
+	die = false
 	hit(dmg: number) {
 		if (this.iframe || this.lastHit + this.hitCooldown > app.elapsed) return
 		this.lastHit = app.elapsed
@@ -175,10 +182,16 @@ export class Player {
 			this.hp -= dmg
 		}
 
+		// Dead
 		if (this.hp <= 0) {
 			this.hp = 0
-			alert("DEAD")
+			die = true
 		}
+
+		// Stagger
+		if (this.staggered) return
+		this.staggered = true
+		this.endStagger = app.elapsed + (dmg / (this.maxHp / 3)) * this.maxStagger
 	}
 
 	iframe = false
@@ -192,6 +205,9 @@ export class Player {
 	dodgeCost = 10
 	dodgeAngle = 0
 	dodgeDir = Directions.Down
+	get dodging() {
+		return this.lastDodge + this.dodgeDuration > app.elapsed
+	}
 
 	hpBar = new ProgressBar(10, 20, 200, 20, this.maxHp, this.hp)
 	shieldBar = new ProgressBar(10, 10, 200, 10, this.maxShield, this.shield, 0x0000ff)
@@ -206,7 +222,10 @@ export class Player {
 	shootDelay = 40
 	lastShot = -Infinity
 	shootDelayBar: ProgressBar
+	pullSpeed = 0.15
 	dmg = 10
+
+	attacking = false
 
 	/* ----------------------------- Modifier logic ----------------------------- */
 	modMap: Partial<Record<keyof this, number>> = {}
@@ -275,22 +294,25 @@ export class Player {
 		]),
 	) as Record<Directions, LayeredAnim>
 	dodges = Object.fromEntries(Object.values(Directions).map((d) => [d, drawLayers(`dodge_${d}`)])) as Record<Directions, LayeredAnim>
-	straightShoots = Object.fromEntries(
-		Object.values(Directions).map((d) => [
-			d,
-			drawLayers(`shoot_straight_${d}`, (s) => {
-				s.animationSpeed = 0.1
-				;(s as any).ogSpeed = 0.1
-			}),
-		]),
-	) as Record<Directions, LayeredAnim>
+	pol_dodges = Object.fromEntries(Object.values(Directions).map((d) => [d, drawLayers(`pol_dodge_${d}`)])) as Record<Directions, LayeredAnim>
+	straightShoots = Object.fromEntries(Object.values(Directions).map((d) => [d, drawLayers(`shoot_straight_${d}`, (s) => (s.animationSpeed = this.pullSpeed))])) as Record<Directions, LayeredAnim>
 	draw = Object.fromEntries(
 		Object.values(Directions).map((d) => [
 			d,
 			drawLayers(`draw_${d}`, (s) => {
-				s.animationSpeed = 0.1
+				s.animationSpeed = 0.2
 				s.loop = false
-				;(s as any).ogSpeed = 0.1
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_draw = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_draw_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
 			}),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -298,6 +320,66 @@ export class Player {
 		Object.values(Directions).map((d) => [
 			d,
 			drawLayers(`sheath_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_sheath = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_sheath_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_slash = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_slash_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_trust_1 = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_trust_1_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_trust_2 = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_trust_2_${d}`, (s) => {
+				s.animationSpeed = 0.2
+				s.loop = false
+				;(s as any).ogSpeed = 0.2
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	dead = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`dead_${d}`, (s) => {
+				s.animationSpeed = 0.1
+				s.loop = false
+				;(s as any).ogSpeed = 0.1
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_dead = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_dead_${d}`, (s) => {
 				s.animationSpeed = 0.1
 				s.loop = false
 				;(s as any).ogSpeed = 0.1
@@ -335,8 +417,8 @@ export class Player {
 		this.rectGraphics.y = this.rect.y
 	}
 
-	changeAnim(anim: LayeredAnim, f = true, reset = false) {
-		if (anim.anim === this.anim.anim && f) return
+	changeAnim(anim: LayeredAnim, checkSame = true, reset = false) {
+		if (anim.anim === this.anim.anim && checkSame) return
 		this.anim.rem()
 		this.anim.do((s) => s.gotoAndStop(0))
 		this.anim = anim
@@ -351,6 +433,8 @@ export class Player {
 	vel = vec(0, 0)
 	lastStaminaUse = -Infinity
 	update(dt: number) {
+		/* ---------------------------------- Dead ---------------------------------- */
+
 		/* -------------------------------- Base vel -------------------------------- */
 		this.vel.clear()
 		if (keyDown("KeyW")) this.vel.y -= 1
@@ -362,7 +446,7 @@ export class Player {
 		this.vel.scaleSet(dt)
 
 		/* ------------------ Shooting (REVISE LATER // VERY MESSY) ----------------- */
-		const shooting = !this.switching && this.attackMode === "bow" && mouseDown(0) && !this.endShoot && this.lastShot + this.shootDelay < app.elapsed
+		const shooting = !this.switching && this.attackMode === "bow" && mouseDown(0) && !this.endShoot && this.lastShot + this.shootDelay < app.elapsed && !this.dodging
 		const angleToMouse = this.rect.center.angle(app.mousePos)
 		const atmDir = angleAsDir(angleToMouse)
 		if (this.attackMode !== "bow" || this.switching) {
@@ -378,12 +462,12 @@ export class Player {
 				Object.values(this.straightShoots).forEach((a) => {
 					a.do((s) => {
 						s.gotoAndPlay(0)
-						s.animationSpeed = (s as any).ogSpeed
+						s.animationSpeed = this.pullSpeed
 					})
 				})
 			}
 
-			if (!this.shootReady) anim.do((s) => (s.animationSpeed = (s as any).ogSpeed))
+			if (!this.shootReady) anim.do((s) => (s.animationSpeed = (s as any)?.ogSpeed ?? this.pullSpeed))
 			if (anim.anim !== this.anim.anim) {
 				this.anim.rem()
 				this.anim.do((s) => (s.onFrameChange = undefined))
@@ -412,14 +496,14 @@ export class Player {
 
 				this.changeAnim(this.straightShoots[atmDir])
 				this.anim.do((s) => {
-					s.animationSpeed = 0.2
+					s.animationSpeed = this.pullSpeed * 1.5
 					s.loop = false
 					s.gotoAndPlay(STRAIGHT_PAUSE)
-					s.onComplete = () => {
-						this.endShoot = false
-						console.log("end")
-					}
 				})
+				this.anim.first.onComplete = () => {
+					this.endShoot = false
+					console.log("end")
+				}
 				console.log("shoot")
 				this.endShoot = true
 			}
@@ -434,7 +518,7 @@ export class Player {
 		if (this.endShoot) {
 			Object.values(this.straightShoots).forEach((a) => {
 				a.do((s) => {
-					s.animationSpeed = 0.2
+					s.animationSpeed = this.pullSpeed * 1.5
 				})
 			})
 		}
@@ -451,20 +535,22 @@ export class Player {
 			this.dodgeAngle = this.vel.isZero() ? dirAsAngle(dir) : this.vel.asAngle()
 			this.dodgeDir = dir
 		}
-		const dodging = this.lastDodge + this.dodgeDuration > app.elapsed
-		if (dodging) {
+		if (this.dodging) {
 			this.vel = Vec2.ZERO.project(this.dodgeAngle, this.dodgeSpeed * dt)
-			if (!this.switching) this.changeAnim(this.dodges[this.dodgeDir])
+			if (!this.switching) {
+				if (this.attackMode === "bow") this.changeAnim(this.dodges[dir])
+				else this.changeAnim(this.pol_dodges[dir])
+			}
 		}
-		this.iframe = dodging
+		this.iframe = this.dodging
 
 		/* ----------------------------- MOVEMENT LOGIC ----------------------------- */
-		if (!dodging && !shooting) {
+		if (!this.dodging && !shooting) {
 			if (!this.vel.isZero()) {
 				/* ------------------------------ SPRINT LOGIC ------------------------------ */
 				const cost = 0.5 * dt
-				if (keyDown("ShiftLeft") && this.stamina > cost) {
-					if (!this.endShoot && !this.switching) this.changeAnim(this.runs[dir])
+				if (keyDown("ShiftLeft") && this.stamina > cost && !this.switching) {
+					if (!this.endShoot) this.changeAnim(this.runs[dir])
 					this.vel.scaleSet(2.5)
 					this.stamina -= cost
 					this.lastStaminaUse = app.elapsed
@@ -488,14 +574,46 @@ export class Player {
 		if (!this.vel.isZero()) this.lastVel = this.vel.clone()
 
 		/* ----------------------- Normalize diagonal movement ---------------------- */
-		if (!dodging && this.vel.x !== 0 && this.vel.y !== 0) {
+		if (!this.dodging && this.vel.x !== 0 && this.vel.y !== 0) {
 			this.vel.scaleSet(0.7071)
 		}
 
 		/* ------------------------------ Stamina regen ----------------------------- */
-		if (!dodging && this.lastStaminaUse + this.staminaRegenCooldown < app.elapsed) {
+		if (!this.dodging && this.lastStaminaUse + this.staminaRegenCooldown < app.elapsed) {
 			const increase = this.vel.isZero() ? this.staminaStandRegen : this.staminaRegen
 			this.stamina = Math.min(this.stamina + increase * dt, this.maxStamina)
+		}
+
+		/* -------------------------------- Switching ------------------------------- */
+		if (keyPressed("KeyV") && !this.switching && this.lastSwitch + this.switchCooldown < app.elapsed) {
+			this.switching = true
+			console.log("Switching")
+			if (this.attackMode === "bow") {
+				this.changeAnim(this.sheath[dir])
+				this.sheath[dir].first.onComplete = () => {
+					this.sheath[dir].first.onComplete = undefined
+					this.changeAnim(this.pol_draw[dir])
+
+					this.pol_draw[dir].first.onComplete = () => {
+						this.switching = false
+						this.lastSwitch = app.elapsed
+						this.pol_draw[dir].first.onComplete = undefined
+					}
+				}
+			} else {
+				this.changeAnim(this.pol_sheath[dir])
+				this.pol_sheath[dir].first.onComplete = () => {
+					this.pol_sheath[dir].first.onComplete = undefined
+					this.changeAnim(this.draw[dir])
+
+					this.draw[dir].first.onComplete = () => {
+						this.switching = false
+						this.lastSwitch = app.elapsed
+						this.draw[dir].first.onComplete = undefined
+					}
+				}
+			}
+			this.attackMode = this.attackMode === "bow" ? "pol" : "bow"
 		}
 
 		/* --------------------------------- Updates -------------------------------- */
@@ -512,11 +630,8 @@ export class Player {
 		this.shootDelayBar.update(clamp(this.lastShot + this.shootDelay - app.elapsed, 0, this.shootDelay))
 
 		/* --------------------------------- Testing -------------------------------- */
-		if (keyPressed("KeyV") && !this.switching) {
-			this.switching = true
-			console.log("Switching")
-			this.changeAnim(this.sheath[dir])
-			this.attackMode = this.attackMode === "bow" ? "pol" : "bow"
+		if (keyPressed("KeyF")) {
+			this.hit(10)
 		}
 	}
 }

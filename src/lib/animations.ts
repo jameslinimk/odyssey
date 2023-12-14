@@ -409,7 +409,7 @@ export const getSheet = (anim: string) => {
 	if (POL_ONE.includes(anim)) return pPol1
 	if (POL_TWO.includes(anim)) return pPol2
 	if (POL_THREE.includes(anim)) return pPol3
-	throw new Error("Unknown animation")
+	throw new Error(`Unknown animation: ${anim}`)
 }
 
 const p1 = await parseAll(fullSheets(ODYSSEUS_CONF, p1Sheet(ODYSSEUS_CONF), ["6tla", "7tlb"]))
