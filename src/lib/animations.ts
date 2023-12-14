@@ -58,6 +58,28 @@ export enum Directions {
 	Left = "left",
 }
 
+export const dirAsAngle = (dir: Directions) => {
+	switch (dir) {
+		case Directions.Right:
+			return 0
+		case Directions.Down:
+			return Math.PI / 2
+		case Directions.Left:
+			return Math.PI
+		case Directions.Up:
+			return (3 * Math.PI) / 2
+	}
+}
+
+export const radiansToDegrees = (radians: number) => (radians * 180) / Math.PI
+
+export const angleAsDir = (angle: number) => {
+	if (-(Math.PI / 4) <= angle && angle <= Math.PI / 4) return Directions.Right
+	if (Math.PI / 4 <= angle && angle <= (Math.PI * 3) / 4) return Directions.Down
+	if (((Math.PI * 3) / 4 <= angle && angle <= Math.PI) || (-Math.PI <= angle && angle <= -((Math.PI * 3) / 4))) return Directions.Left
+	return Directions.Up
+}
+
 const sheet = (meta: Meta, data: SpritesheetData): ISpritesheetData => {
 	if (!meta?.size) throw new Error("No size provided")
 
@@ -118,57 +140,95 @@ const parseAll = async <T extends string>(sheets: Record<T, ISpritesheetData>): 
 
 const pl = (n: number) => n.toString().padStart(2, "0")
 
-export const LAYERS = ["0bas", "1out", "4har", "6tla", "7tlb"] as const
+export const LAYERS = ["0bas", "1out", "4har", "5hat", "6tla", "7tlb"] as const
 export const V_MAP = {
-	"0bas": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-	"1out": [1],
-	"4har": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-	"6tla": [1, 2, 3, 4, 5],
-	"7tlb": [1, 2, 3, 4, 5, 6, 7, 8],
-} as const
-const NEW_V_MAP = {
 	"0bas": {
-		humn: [0, 1],
+		humn: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 	},
-}
+	"1out": {
+		boxr: [1],
+		undi: [1],
+		pfpn: [1, 2, 3, 4, 5],
+		fstr: [1, 2, 3, 4, 5],
+	},
+	"4har": {
+		bob1: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+		dap1: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+	},
+	"5hat": {
+		pfht: [1, 2, 3, 4, 5],
+		pnty: [1, 2, 3, 4, 5],
+	},
+	"6tla": {
+		bo01: [1, 2, 3, 4, 5],
+		bo02: [1, 2, 3, 4, 5],
+		bo03: [1, 2, 3, 4, 5],
+	},
+	"7tlb": {
+		qv01: [1, 2, 3, 4, 5, 6, 7, 8],
+	},
+} as const
 export const T_MAP = {
 	"0bas": ["humn"],
-	"1out": ["boxr", "undi"],
+	"1out": ["boxr", "undi", "pfpn", "fstr"],
 	"4har": ["bob1", "dap1"],
+	"5hat": ["pfht", "pnty"],
 	"6tla": ["bo01", "bo02", "bo03"],
 	"7tlb": ["qv01"],
 } as const
 
 interface Linfo {
 	"0bas": {
+		skip?: boolean
 		type: (typeof T_MAP)["0bas"][number]
-		v: (typeof V_MAP)["0bas"][number]
+		v: number
 	}
 	"1out": {
+		skip?: boolean
 		type: (typeof T_MAP)["1out"][number]
-		v: (typeof V_MAP)["1out"][number]
+		v: number
 	}
 	"4har": {
+		skip?: boolean
 		type: (typeof T_MAP)["4har"][number]
-		v: (typeof V_MAP)["4har"][number]
+		v: number
+	}
+	"5hat": {
+		skip?: boolean
+		type: (typeof T_MAP)["5hat"][number]
+		v: number
 	}
 	"6tla": {
+		skip?: boolean
 		type: (typeof T_MAP)["6tla"][number]
-		v: (typeof V_MAP)["6tla"][number]
+		v: number
 	}
 	"7tlb": {
+		skip?: boolean
 		type: (typeof T_MAP)["7tlb"][number]
-		v: (typeof V_MAP)["7tlb"][number]
+		v: number
 	}
 }
 
-const fullSheets = (info: Linfo, data: ISpritesheetData, skip: (typeof LAYERS)[number][] = []) => {
+export const checkLInfo = (info: Linfo) => {
+	const errors = [] as string[]
+	LAYERS.forEach((l) => {
+		const { type, v } = info[l]
+		if (!(T_MAP[l] as any).includes(type)) errors.push(`Invalid type ${type} for layer ${l}`)
+		if (!(V_MAP[l] as any)[type].includes(v)) errors.push(`Invalid variant ${v} for layer ${l} and type ${type}`)
+	})
+	if (errors.length) throw new Error(errors.join("\n"))
+}
+
+const fullSheets = (info: Linfo, data: ISpritesheetData, skips: (typeof LAYERS)[number][] = []) => {
 	const sheets = {} as Record<(typeof LAYERS)[number], ISpritesheetData>
 	const baseFolder = data.meta.image!.split("/").slice(0, -1).join("/")
 	const baseName = data.meta.image!.split("/").slice(-1)[0].split(".")[0].split("_0bas")[0]
 	LAYERS.forEach((l) => {
-		if (skip.includes(l)) return
-		const { type, v } = info[l]
+		const { type, v, skip } = info[l]
+		if (skips.includes(l)) return
+		if (skip) return
+
 		sheets[l] = {
 			...data,
 			meta: {
@@ -233,7 +293,7 @@ export class LayeredAnim {
 export const drawLayers = (animation: string, caller?: (sprite: AnimatedSprite) => any) => {
 	const data = getSheet(animation)
 	const skips: string[] = LAYERS.filter((l) => !Object.keys(data).includes(l))
-	const layer = ["0bas", "1out", "4har"]
+	const layer = ["0bas", "1out", "4har", "5hat"]
 
 	if (OVER_BOW.has(animation)) layer.push("6tla")
 	else layer.unshift("6tla")
@@ -249,12 +309,24 @@ export const drawLayers = (animation: string, caller?: (sprite: AnimatedSprite) 
 }
 
 const ODYSSEUS_CONF: Linfo = {
-	"0bas": { type: "humn", v: 0 },
-	"1out": { type: "boxr", v: 1 },
+	"0bas": { type: "humn", v: 1 },
+	"1out": { type: "fstr", v: 1 },
 	"4har": { type: "dap1", v: 3 },
+	"5hat": { type: "pnty", v: 1 },
 	"6tla": { type: "bo03", v: 1 },
 	"7tlb": { type: "qv01", v: 1 },
 }
+
+export const rand = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
+
+export const randSuitor = () =>
+	["0bas", "1out", "4har", "5hat"].reduce((acc, cur) => {
+		const type = rand<string>((T_MAP as any)[cur])
+		const v = rand<number>((V_MAP as any)[cur][type])
+		const skip = cur !== "0bas" && Math.random() < 0.5
+		acc[cur] = { type, v, skip }
+		return acc
+	}, {} as any) as Linfo
 
 const confToPath = (conf: Linfo, page: number, customPage = "") => {
 	return `char_a_p${customPage}${page}_0bas_${conf["0bas"].type}_v${pl(conf["0bas"].v)}.png`
