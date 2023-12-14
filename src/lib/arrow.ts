@@ -6,6 +6,9 @@ export const arrows: Arrow[] = []
 
 let id = 0
 
+// Load arrow texture
+Sprite.from("arrow.png").destroy()
+
 export class Arrow {
 	get expired() {
 		if (this.maxDistance !== undefined && this.pos.distance(this.start) > this.maxDistance) return true
@@ -49,7 +52,7 @@ export class Arrow {
 				player.hit(this.dmg)
 			}
 		} else {
-			throw new Error("Not implemented")
+			// throw new Error("Not implemented")
 		}
 	}
 }

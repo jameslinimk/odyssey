@@ -21,6 +21,7 @@ class NewApplication extends Application {
 export const app = new NewApplication({
 	backgroundColor: 0x1099bb,
 })
+BaseTexture.defaultOptions.scaleMode = SCALE_MODES.NEAREST
 
 const view = app.view as HTMLCanvasElement
 document.body.appendChild(view)
@@ -34,8 +35,6 @@ const resize = () => {
 }
 resize()
 window.addEventListener("resize", resize)
-
-BaseTexture.defaultOptions.scaleMode = SCALE_MODES.NEAREST
 
 const alreadyExp = new Set<number>()
 

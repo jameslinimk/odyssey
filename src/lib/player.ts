@@ -1,6 +1,6 @@
 import { app, clamp } from "$lib"
 import { Graphics, Rectangle, Sprite } from "pixi.js"
-import { Directions, LayeredAnim, angleAsDir, dirAsAngle, drawLayers, randSuitor } from "./animations.js"
+import { Directions, LayeredAnim, angleAsDir, dirAsAngle, drawLayers } from "./animations.js"
 import { Arrow } from "./arrow.js"
 import { keyDown, keyPressed, mouseDown } from "./events.js"
 
@@ -159,6 +159,9 @@ export class Player {
 	staminaStandRegen = 0.5
 	staminaRegenCooldown = 50
 
+	attackMode: "bow" | "pol" = "bow"
+	switching = false
+
 	hit(dmg: number) {
 		if (this.iframe || this.lastHit + this.hitCooldown > app.elapsed) return
 		this.lastHit = app.elapsed
@@ -187,6 +190,7 @@ export class Player {
 	dodgeDuration = 15
 	dodgeSpeed = 5
 	dodgeCost = 10
+	dodgeAngle = 0
 	dodgeDir = Directions.Down
 
 	hpBar = new ProgressBar(10, 20, 200, 20, this.maxHp, this.hp)
@@ -230,6 +234,16 @@ export class Player {
 			d,
 			drawLayers(`idle_${d}`, (s) => {
 				s.animationSpeed = 0.08
+				;(s as any).ogSpeed = 0.08
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_idles = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_idle_${d}`, (s) => {
+				s.animationSpeed = 0.08
+				;(s as any).ogSpeed = 0.08
 			}),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -238,6 +252,16 @@ export class Player {
 			d,
 			drawLayers(`move_${d}`, (s) => {
 				s.animationSpeed = 0.15
+				;(s as any).ogSpeed = 0.15
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	pol_moves = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`pol_move_${d}`, (s) => {
+				s.animationSpeed = 0.15
+				;(s as any).ogSpeed = 0.15
 			}),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -246,6 +270,7 @@ export class Player {
 			d,
 			drawLayers(`run_${d}`, (s) => {
 				s.animationSpeed = 0.15
+				;(s as any).ogSpeed = 0.15
 			}),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -255,6 +280,27 @@ export class Player {
 			d,
 			drawLayers(`shoot_straight_${d}`, (s) => {
 				s.animationSpeed = 0.1
+				;(s as any).ogSpeed = 0.1
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	draw = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`draw_${d}`, (s) => {
+				s.animationSpeed = 0.1
+				s.loop = false
+				;(s as any).ogSpeed = 0.1
+			}),
+		]),
+	) as Record<Directions, LayeredAnim>
+	sheath = Object.fromEntries(
+		Object.values(Directions).map((d) => [
+			d,
+			drawLayers(`sheath_${d}`, (s) => {
+				s.animationSpeed = 0.1
+				s.loop = false
+				;(s as any).ogSpeed = 0.1
 			}),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -316,9 +362,13 @@ export class Player {
 		this.vel.scaleSet(dt)
 
 		/* ------------------ Shooting (REVISE LATER // VERY MESSY) ----------------- */
-		const shooting = mouseDown(0) && !this.endShoot && this.lastShot + this.shootDelay < app.elapsed
+		const shooting = !this.switching && this.attackMode === "bow" && mouseDown(0) && !this.endShoot && this.lastShot + this.shootDelay < app.elapsed
 		const angleToMouse = this.rect.center.angle(app.mousePos)
 		const atmDir = angleAsDir(angleToMouse)
+		if (this.attackMode !== "bow" || this.switching) {
+			this.pulling = false
+			this.shootFrame = 0
+		}
 		if (shooting) {
 			let reset = false
 			if (!this.pulling) reset = true
@@ -328,14 +378,16 @@ export class Player {
 				Object.values(this.straightShoots).forEach((a) => {
 					a.do((s) => {
 						s.gotoAndPlay(0)
-						s.animationSpeed = 0.1
+						s.animationSpeed = (s as any).ogSpeed
 					})
 				})
 			}
 
-			if (!this.shootReady) anim.do((s) => (s.animationSpeed = 0.1))
+			if (!this.shootReady) anim.do((s) => (s.animationSpeed = (s as any).ogSpeed))
 			if (anim.anim !== this.anim.anim) {
 				this.anim.rem()
+				this.anim.do((s) => (s.onFrameChange = undefined))
+				this.anim.do((s) => s.gotoAndStop(0))
 				this.anim = anim
 				this.anim.add()
 				anim.do((s) => {
@@ -373,6 +425,9 @@ export class Player {
 			}
 			this.pulling = false
 			this.shootFrame = 0
+		} else {
+			this.pulling = false
+			this.shootFrame = 0
 		}
 
 		// Fix animation speed bug (band-aid)
@@ -389,16 +444,17 @@ export class Player {
 		// console.log(animationSpeed)
 
 		/* ------------------------------- DODGE LOGIC ------------------------------ */
-		if (keyDown("Space") && this.stamina > this.dodgeCost && this.lastDodge + this.dodgeCooldown < app.elapsed && !this.endShoot) {
+		if (keyDown("Space") && this.stamina > this.dodgeCost && this.lastDodge + this.dodgeCooldown < app.elapsed && !this.endShoot && !this.switching) {
 			this.stamina -= this.dodgeCost
 			this.lastStaminaUse = app.elapsed
 			this.lastDodge = app.elapsed
+			this.dodgeAngle = this.vel.isZero() ? dirAsAngle(dir) : this.vel.asAngle()
 			this.dodgeDir = dir
 		}
 		const dodging = this.lastDodge + this.dodgeDuration > app.elapsed
 		if (dodging) {
-			this.vel = Vec2.ZERO.project(dirAsAngle(this.dodgeDir), this.dodgeSpeed * dt)
-			this.changeAnim(this.dodges[this.dodgeDir])
+			this.vel = Vec2.ZERO.project(this.dodgeAngle, this.dodgeSpeed * dt)
+			if (!this.switching) this.changeAnim(this.dodges[this.dodgeDir])
 		}
 		this.iframe = dodging
 
@@ -408,16 +464,25 @@ export class Player {
 				/* ------------------------------ SPRINT LOGIC ------------------------------ */
 				const cost = 0.5 * dt
 				if (keyDown("ShiftLeft") && this.stamina > cost) {
-					if (!this.endShoot) this.changeAnim(this.runs[dir])
+					if (!this.endShoot && !this.switching) this.changeAnim(this.runs[dir])
 					this.vel.scaleSet(2.5)
 					this.stamina -= cost
 					this.lastStaminaUse = app.elapsed
 				} else {
-					if (!this.endShoot) this.changeAnim(this.moves[dir])
+					if (!this.endShoot && !this.switching) {
+						if (this.attackMode === "bow") this.changeAnim(this.moves[dir])
+						else this.changeAnim(this.pol_moves[dir])
+					}
 				}
 			} else {
-				if (!this.endShoot) this.changeAnim(this.idles[dir])
+				if (!this.endShoot && !this.switching) {
+					if (this.attackMode === "bow") this.changeAnim(this.idles[dir])
+					else this.changeAnim(this.pol_idles[dir])
+				}
 			}
+		}
+		if (shooting) {
+			this.vel.scaleSet(0.5)
 		}
 
 		if (!this.vel.isZero()) this.lastVel = this.vel.clone()
@@ -447,8 +512,11 @@ export class Player {
 		this.shootDelayBar.update(clamp(this.lastShot + this.shootDelay - app.elapsed, 0, this.shootDelay))
 
 		/* --------------------------------- Testing -------------------------------- */
-		if (keyPressed("KeyV")) {
-			console.log(randSuitor())
+		if (keyPressed("KeyV") && !this.switching) {
+			this.switching = true
+			console.log("Switching")
+			this.changeAnim(this.sheath[dir])
+			this.attackMode = this.attackMode === "bow" ? "pol" : "bow"
 		}
 	}
 }
