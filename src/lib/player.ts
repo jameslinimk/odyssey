@@ -101,6 +101,7 @@ const STRAIGHT_PAUSE = 4
 export class Player {
 	maxHp = 100
 	hp = this.maxHp
+	dmgTaken = 1
 	maxShield = 100
 	shield = 0
 	maxStamina = 100
@@ -114,6 +115,7 @@ export class Player {
 	lastSwitch = -Infinity
 	switchCooldown = 20
 
+	hide = false
 	staggered = false
 	staggerAngle = 0
 	endStagger = -Infinity
@@ -126,6 +128,10 @@ export class Player {
 	}
 	hit(dmg: number, staggerAngle = 0) {
 		if (this.iframe || this.lastHit + this.hitCooldown > app.elapsed) return
+		if (Math.random() >= 0.8) return this.birdSave()
+
+		dmg *= this.dmgTaken
+
 		this.dieDir = angleAsDir(staggerAngle + Math.PI)
 		this.lastHit = app.elapsed
 		if (this.shield > 0) {
@@ -209,7 +215,7 @@ export class Player {
 		this[attr] = (this.ogMap[attr]! + this.ogMap[attr]! * this.modMap[attr]!) as any
 	}
 
-	rect = NewRectangle.fromCenter(400, 300, 12 * MAP_SCALE, 12 * MAP_SCALE * 2)
+	rect = NewRectangle.fromCenter(600, 300, 12 * MAP_SCALE, 12 * MAP_SCALE * 2)
 	rectGraphics: Sprite | null = null
 	idles = Object.fromEntries(
 		Object.values(Directions).map((d) => [
@@ -391,14 +397,29 @@ export class Player {
 		this.attackDelayBar.cur.alpha = 0.6
 	}
 
+	birdOffset = vec(20, -20)
+	birdT = 0
 	birdSave() {
 		bird.animationSpeed = 0.3 * SLOWDOWN
 		bird.gotoAndPlay(0)
 		bird.anchor.set(0.5, 0.5)
+		this.birdT = 0
+		bird.zIndex = 2
 		cameraContainer.addChild(bird)
 
-		const offset = vec(100, 100)
-		bird.position.set(this.rect.centerX + offset.x, this.rect.centerY + offset.y)
+		bird.position.set(this.rect.centerX + this.birdOffset.x, this.rect.centerY + this.birdOffset.y)
+	}
+
+	birdUpdate(dt: number) {
+		this.birdT += dt * 0.03
+
+		const pos = this.rect.center.add(this.birdOffset).lerp(this.rect.center.sub(this.birdOffset), ease(this.birdT))
+		bird.position.set(pos.x, pos.y)
+
+		if (this.birdT >= 0.6) {
+			bird.stop()
+			cameraContainer.removeChild(bird)
+		}
 	}
 
 	updateGraphics() {
@@ -419,10 +440,13 @@ export class Player {
 		})
 	}
 
+	lastGod1 = -Infinity
+
 	lastVel = vec(0, 0)
 	vel = vec(0, 0)
 	lastStaminaUse = -Infinity
 	fullyDead = false
+	speed = 1
 	update(dt: number) {
 		/* -------------------------------- Base vel -------------------------------- */
 		this.vel.clear()
@@ -432,7 +456,7 @@ export class Player {
 		if (keyDown("KeyD")) this.vel.x += 1
 
 		const dir = this.vel.asDirection(this.lastVel.asDirection())
-		this.vel.scaleSet(dt)
+		this.vel.scaleSet(dt * this.speed)
 
 		/* ---------------------------------- Dead ---------------------------------- */
 		if (this.die) {
@@ -721,12 +745,16 @@ export class Player {
 			s.y = this.rect.y - OFFSET_Y
 		})
 		this.updateGraphics()
+		this.birdUpdate(dt)
 
 		this.hpBar.update(this.hp)
 		this.shieldBar.update(this.shield)
 		this.staminaBar.update(this.stamina)
 		this.shootDelayBar.update(clamp(this.lastShot + this.shootDelay - app.elapsed, 0, this.shootDelay))
 		this.attackDelayBar.update(clamp(this.lastAttack + this.attackCooldown - app.elapsed, 0, this.attackCooldown))
+
+		if (this.hide) this.anim.do((s) => (s.alpha = 0))
+		else this.anim.do((s) => (s.alpha = 1))
 
 		/* --------------------------------- Testing -------------------------------- */
 		if (keyPressed("KeyF")) {

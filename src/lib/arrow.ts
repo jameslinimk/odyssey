@@ -6,7 +6,7 @@ import type { Vec2 } from "./vec2.js"
 
 let id = 0
 
-const arrowTexture = Texture.from("arrow.png")
+export const arrowTexture = Texture.from("arrow.png")
 
 const OFFSET = -18
 

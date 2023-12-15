@@ -30,6 +30,7 @@
 	"type": "module",
 	"dependencies": {
 		"@pixi/filter-glow": "^5.2.1",
+		"@sveltejs/adapter-static": "^3.0.0",
 		"pixi.js": "^7.3.2",
 		"tinyqueue": "^2.0.3"
 	}

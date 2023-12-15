@@ -1,5 +1,11 @@
 <script lang="ts">
+	import collision from "$lib/spawns.json"
 	import { onMount } from "svelte"
+
+	const already = new Set<string>()
+	collision.forEach(([x, y]) => {
+		already.add(`${x},${y}`)
+	})
 
 	// Rushed rewrite l8r
 
@@ -11,8 +17,13 @@
 
 		// Create 24x24 tiles
 		for (let i = 0; i < 64 * 2 * 74 * 2; i++) {
+			const [x, y] = [i % (64 * 2), Math.floor(i / (64 * 2))]
+
 			const tile = document.createElement("div")
 			tile.classList.add("tile")
+			if (already.has(`${x},${y}`)) {
+				tile.classList.add("selected")
+			}
 			;(tile as any).dataset.index = i
 			grid!.appendChild(tile)
 
@@ -71,7 +82,7 @@
 		display: grid;
 		grid-template-columns: repeat(calc(64 * 2), 12px);
 		grid-template-rows: repeat(calc(74 * 2), 12px);
-		background-image: url("real_map.png");
+		background-image: url("image.png");
 		background-repeat: no-repeat;
 	}
 

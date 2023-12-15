@@ -76,15 +76,3 @@ function reconstructPath(current: Node): Point[] {
 	}
 	return totalPath
 }
-
-// Example usage
-const graph: Graph = [
-	[0, 0, 0],
-	[0, 1, 1],
-	[0, 1, 0],
-]
-const start: Point = [0, 0]
-const goal: Point = [2, 2]
-
-const path = astar(graph, start, goal)
-console.log(path)

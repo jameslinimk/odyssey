@@ -396,7 +396,7 @@ export const getSheet = (anim: string) => {
 	const ONE = ["draw", "parry", "dodge", "hurt", "dead", "sheath"]
 	const TWO = ["idle", "move", "crouch", "retreat", "lunge"]
 	const THREE = ["shoot_up", "shoot_straight"]
-	const RUN = ["run"]
+	const RUN = ["run", "walk", "stand"]
 	const POL_ONE = ONE.map((a) => `pol_${a}`)
 	const POL_TWO = TWO.map((a) => `pol_${a}`)
 	const POL_THREE = ["pol_slash", "pol_trust_1", "pol_trust_2"]

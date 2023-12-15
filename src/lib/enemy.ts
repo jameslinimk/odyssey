@@ -1,20 +1,23 @@
 import { SHOW_HITBOXES, SLOWDOWN, app, cameraContainer, clamp, player } from "$lib"
 import { Sprite, Texture } from "pixi.js"
-import { p1PolSheet, p2PolSheet, p3PolSheet } from "./animation_sheets.js"
+import { p1PolSheet, p1Sheet, p2PolSheet, p3PolSheet } from "./animation_sheets.js"
 import { Directions, LayeredAnim, angleAsDir, drawLayers, fRand, fullSheets, parseAll, randSuitor } from "./animations.js"
 import { MAP_SCALE, astarVec, wallRects } from "./map.js"
 import { NewRectangle, OFFSET_X, OFFSET_Y, ease } from "./player.js"
+import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
 
-export const SUITORS = 1
+export const SUITORS = spawns.length
 const configs = new Array(SUITORS).fill(0).map(() => randSuitor("pol"))
 console.log({ configs })
+export const p1Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p1Sheet(c), ["7tlb", "6tla"]))))
 const pol1Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p1PolSheet(c), ["7tlb"]))))
 const pol2Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p2PolSheet(c), ["7tlb"]))))
 const pol3Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p3PolSheet(c), ["7tlb"]))))
 let id = 0
 
 const SLASH_FRAME = 2
+export let killed = 0
 
 export class Enemy {
 	rect: NewRectangle
@@ -129,6 +132,7 @@ export class Enemy {
 	hp = this.maxHp
 
 	expire = false
+	hide = false
 
 	dieDir = Directions.Up
 	firstDie = false
@@ -137,7 +141,10 @@ export class Enemy {
 	}
 	hit(dmg: number, staggerAngle = 0) {
 		this.hp -= dmg
-		if (this.die) this.hp = 0
+		if (this.die) {
+			this.hp = 0
+			killed++
+		}
 
 		// Stagger
 		if (this.staggered || dmg < this.maxHp / 20) return
@@ -232,14 +239,14 @@ export class Enemy {
 		}
 		if (this.slashing && this.staggered) this.slashing = false
 
-		if (this.path.length > 1 && !there) {
+		if (!this.staggered && this.path.length > 1 && !there) {
 			const target = this.path[1]
 			const angle = this.rect.center.angle(target)
 			this.rect.center = this.rect.center.project(angle, this.speed * dt)
 			dir = angleAsDir(angle)
 
 			const distance = this.rect.center.distance(target)
-			if (distance < 5) this.path.shift()
+			if (distance < 6) this.path.shift()
 		}
 
 		/* --------------------------------- Stagger -------------------------------- */
@@ -257,29 +264,31 @@ export class Enemy {
 		}
 
 		/* -------------------------------- Collision ------------------------------- */
-		const hRect = this.rect.addVec(vec(this.vel.x, 0))
-		wallRects.forEach((w) => {
-			if (hRect.intersects(w)) {
-				if (this.vel.x > 0) {
-					this.rect.x = w.x - this.rect.width
-				} else if (this.vel.x < 0) {
-					this.rect.x = w.x + w.width
+		if (!this.vel.isZero()) {
+			const hRect = this.rect.addVec(vec(this.vel.x, 0))
+			wallRects.forEach((w) => {
+				if (hRect.intersects(w)) {
+					if (this.vel.x > 0) {
+						this.rect.x = w.x - this.rect.width
+					} else if (this.vel.x < 0) {
+						this.rect.x = w.x + w.width
+					}
+					this.vel.x = 0
 				}
-				this.vel.x = 0
-			}
-		})
+			})
 
-		const vRect = this.rect.addVec(vec(0, this.vel.y))
-		wallRects.forEach((w) => {
-			if (vRect.intersects(w)) {
-				if (this.vel.y > 0) {
-					this.rect.y = w.y - this.rect.height
-				} else if (this.vel.y < 0) {
-					this.rect.y = w.y + w.height
+			const vRect = this.rect.addVec(vec(0, this.vel.y))
+			wallRects.forEach((w) => {
+				if (vRect.intersects(w)) {
+					if (this.vel.y > 0) {
+						this.rect.y = w.y - this.rect.height
+					} else if (this.vel.y < 0) {
+						this.rect.y = w.y + w.height
+					}
+					this.vel.y = 0
 				}
-				this.vel.y = 0
-			}
-		})
+			})
+		}
 
 		this.rect.addVecSet(this.vel)
 		this.anim.do((s) => {
@@ -287,5 +296,8 @@ export class Enemy {
 			s.y = this.rect.y - OFFSET_Y + 10
 		})
 		this.updateGraphics()
+
+		if (this.hide) this.anim.do((s) => (s.alpha = 0))
+		else this.anim.do((s) => (s.alpha = 1))
 	}
 }

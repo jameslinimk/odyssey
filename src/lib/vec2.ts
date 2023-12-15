@@ -38,6 +38,10 @@ export class Vec2 {
 		this.y *= s
 	}
 
+	scale(s: number) {
+		return new Vec2(this.x * s, this.y * s)
+	}
+
 	angle(v: Vec2) {
 		return Math.atan2(v.y - this.y, v.x - this.x)
 	}
@@ -70,6 +74,10 @@ export class Vec2 {
 	addSet(v: Vec2) {
 		this.x += v.x
 		this.y += v.y
+	}
+
+	div(s: number) {
+		return new Vec2(this.x / s, this.y / s)
 	}
 
 	round() {

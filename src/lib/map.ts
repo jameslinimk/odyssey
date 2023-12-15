@@ -6,7 +6,7 @@ import { NewRectangle } from "./player.js"
 import { vec, type Vec2 } from "./vec2.js"
 
 export const MAP_SCALE = 0.75
-const COLLISION_TILE_SIZE = 12 * MAP_SCALE
+export const COLLISION_TILE_SIZE = 12 * MAP_SCALE
 
 export const map = Sprite.from("real_map.png")
 export const overmap = Sprite.from("real_overmap.png")
@@ -38,21 +38,6 @@ const cache = new Map<string, Vec2[] | null>()
 export const astarVec = (start: Vec2, goal: Vec2) => {
 	const startGraph = vecToGraph(start)
 	const goalGraph = vecToGraph(goal)
-
-	// if (!firstLog) {
-	// 	let msg = ""
-	// 	for (let y = 0; y < graph[0].length; y++) {
-	// 		for (let x = 0; x < graph.length; x++) {
-	// 			let char = graph[y][x] ? "X" : " "
-	// 			if (x === startGraph[0] && y === startGraph[1]) char = "S"
-	// 			if (x === goalGraph[0] && y === goalGraph[1]) char = "G"
-	// 			msg += char
-	// 		}
-	// 		msg += "\n"
-	// 	}
-	// 	console.log(msg)
-	// 	firstLog = true
-	// }
 
 	const key = `${startGraph.toString()}${goalGraph.toString()}`
 	if (cache.has(key)) return cache.get(key)
