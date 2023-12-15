@@ -29,6 +29,8 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"pixi.js": "^7.3.2"
+		"@pixi/filter-glow": "^5.2.1",
+		"pixi.js": "^7.3.2",
+		"tinyqueue": "^2.0.3"
 	}
 }

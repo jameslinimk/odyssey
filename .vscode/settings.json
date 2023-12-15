@@ -1,12 +1,17 @@
 {
 	"cSpell.words": [
 		"ANIMS",
+		"astar",
 		"boxr",
 		"Cooldown",
+		"datastructures",
 		"demod",
 		"fstr",
+		"HITBOXES",
 		"humn",
+		"lerp",
 		"Linfo",
+		"overmap",
 		"pfht",
 		"pfpn",
 		"pnty",
@@ -14,6 +19,7 @@
 		"Regen",
 		"Spritesheet",
 		"spritesheets",
+		"tinyqueue",
 		"undi"
 	]
 }

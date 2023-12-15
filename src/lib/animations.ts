@@ -1,4 +1,4 @@
-import { app } from "$lib"
+import { cameraContainer } from "$lib"
 import { AnimatedSprite, BaseTexture, Spritesheet, Texture, type ISpritesheetData, type ISpritesheetFrameData } from "pixi.js"
 import { p1BowSheet, p1PolSheet, p1Sheet, p2BowSheet, p2PolSheet, p3BowSheet, p3PolSheet } from "./animation_sheets.js"
 
@@ -134,7 +134,7 @@ const parse = async (sheet: ISpritesheetData) => {
 	return spritesheet
 }
 
-const parseAll = async <T extends string>(sheets: Record<T, ISpritesheetData>): Promise<Record<T, Spritesheet<any>>> => {
+export const parseAll = async <T extends string>(sheets: Record<T, ISpritesheetData>): Promise<Record<T, Spritesheet<any>>> => {
 	const spritesheets = Object.entries(sheets).map(([k, v]: any) => parse(v).then((s) => [k, s]))
 	return Object.fromEntries(await Promise.all(spritesheets))
 }
@@ -224,13 +224,13 @@ export const checkLInfo = (info: Linfo) => {
 	if (errors.length) throw new Error(errors.join("\n"))
 }
 
-const fullSheets = (info: Linfo, data: ISpritesheetData, skips: (typeof LAYERS)[number][] = []) => {
+export const fullSheets = (info: Linfo, data: ISpritesheetData, skips: (typeof LAYERS)[number][] = []) => {
 	const sheets = {} as Record<(typeof LAYERS)[number], ISpritesheetData>
 	const baseFolder = data.meta.image!.split("/").slice(0, -1).join("/")
 	const baseName = data.meta.image!.split("/").slice(-1)[0].split(".")[0].split("_0bas")[0]
 	LAYERS.forEach((l) => {
-		const { type, v, skip } = info[l]
 		if (skips.includes(l)) return
+		const { type, v, skip } = info[l]
 		if (skip) return
 
 		sheets[l] = {
@@ -323,16 +323,16 @@ export class LayeredAnim {
 	}
 
 	add() {
-		this.do((s) => app.stage.addChild(s))
+		this.do((s) => cameraContainer.addChild(s))
 	}
 
 	rem() {
-		this.do((s) => app.stage.removeChild(s))
+		this.do((s) => cameraContainer.removeChild(s))
 	}
 }
 
-export const drawLayers = (animation: string, caller?: (sprite: AnimatedSprite) => any) => {
-	const data = getSheet(animation)
+export const drawLayers = (animation: string, caller?: (sprite: AnimatedSprite) => any, override?: Record<"0bas" | "1out" | "4har" | "5hat" | "6tla" | "7tlb", Spritesheet<any>>) => {
+	const data = override ?? getSheet(animation)
 	const skips: string[] = LAYERS.filter((l) => !Object.keys(data).includes(l))
 	const layer = ["0bas", "1out", "4har", "5hat"]
 
@@ -366,6 +366,7 @@ const POL_ODY_CONF: Linfo = {
 
 export const rand = <T>(arr: T[]) => arr[iRand(0, arr.length - 1)]
 export const iRand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
+export const fRand = (min: number, max: number) => Math.random() * (max - min) + min
 
 export const randSuitor = (extra?: "pol" | "bow") => {
 	const base = ["0bas", "1out", "4har", "5hat"].reduce((acc, cur) => {
@@ -421,3 +422,35 @@ const pBow3 = await parseAll(fullSheets(ODYSSEUS_CONF, p3BowSheet(ODYSSEUS_CONF)
 const pPol1 = await parseAll(fullSheets(POL_ODY_CONF, p1PolSheet(POL_ODY_CONF)))
 const pPol2 = await parseAll(fullSheets(POL_ODY_CONF, p2PolSheet(POL_ODY_CONF)))
 const pPol3 = await parseAll(fullSheets(POL_ODY_CONF, p3PolSheet(POL_ODY_CONF)))
+
+const birdData: ISpritesheetData = {
+	frames: Object.fromEntries(
+		[
+			[0, 0],
+			[1, 0],
+			[0, 1],
+			[1, 1],
+			[2, 1],
+			[3, 1],
+			[4, 1],
+			[5, 1],
+			[6, 1],
+			[7, 1],
+			[0, 2],
+			[1, 2],
+			[2, 2],
+		].map(([x, y]) => [`${x}${y}`, { frame: { x: x * 16, y: y * 16, w: 16, h: 16 }, sourceSize: { w: 16, h: 16 }, spriteSourceSize: { x: 0, y: 0, w: 16, h: 16 } }] as [string, ISpritesheetFrameData]),
+	),
+	meta: {
+		image: "bird/BirdSprite.png",
+		format: "RGBA8888",
+		size: { w: 128, h: 48 },
+		scale: 1 as any,
+	},
+	animations: {
+		fly: ["01", "11", "21", "31", "41", "51", "61", "71"],
+	},
+}
+
+const birdSheet = await parse(birdData)
+export const bird = new AnimatedSprite(birdSheet.animations.fly)

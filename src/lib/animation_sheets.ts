@@ -16,6 +16,11 @@ export const p1Sheet = (conf: Linfo) =>
 					length: 6,
 					name: "walk",
 				},
+				{
+					start: [0, 0],
+					length: 1,
+					name: "stand",
+				},
 			],
 			rawAnimations: [
 				{
