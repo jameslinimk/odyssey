@@ -52,7 +52,7 @@ export const GOD_INFO: Record<Gods, GodInfo> = {
 		delay: 500,
 		icon: Texture.from("zeus.png"),
 		startPower: () => {
-			thunderboltSprite.animationSpeed = 0.2
+			thunderboltSprite.animationSpeed = 0.2 * SLOWDOWN
 			thunderboltSprite.loop = false
 			thunderboltSprite.gotoAndPlay(0)
 			thunderboltSprite.anchor.set(0.5, 0.5)
@@ -65,6 +65,7 @@ export const GOD_INFO: Record<Gods, GodInfo> = {
 				if (f === 11) {
 					const rect = NewRectangle.fromCenter(thunderboltSprite.x, thunderboltSprite.y + 30, 70, 70)
 					enemies.forEach((e) => {
+						if (e.die) return
 						if (rect.intersects(e.rect)) {
 							const angle = rect.center.angle(e.rect.center)
 							e.hit(Infinity, angle)
@@ -678,6 +679,7 @@ export class Player {
 
 			const pierce = slash ? this.slash_pierce : this.trust_pierce
 			enemies.forEach((e) => {
+				if (e.die) return
 				if (this.alreadyHit.size < pierce && !this.alreadyHit.has(e.id) && hitRect.intersects(e.rect)) {
 					e.hit(slash ? this.slash_dmg : this.trust_dmg, this.attackAngle)
 					this.alreadyHit.add(e.id)

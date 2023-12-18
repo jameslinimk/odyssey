@@ -23,7 +23,8 @@
 		"Spritesheet",
 		"spritesheets",
 		"tinyqueue",
-		"undi"
+		"undi",
+		"writables"
 	],
 	"files.exclude": {
 		"**/.git": true,

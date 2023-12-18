@@ -9,6 +9,7 @@ import { COLLISION_TILE_SIZE, addMaps } from "./map.js"
 import { Player, ease } from "./player.js"
 import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
+import { setRes } from "./writables.js"
 
 export const DEV = false
 
@@ -38,7 +39,7 @@ export const app = new NewApplication({
 })
 
 const view = app.view as HTMLCanvasElement
-document.body.appendChild(view)
+document.body.prepend(view)
 view.style.position = "absolute"
 view.style.top = "0"
 view.style.left = "0"
@@ -60,7 +61,8 @@ addMaps()
 const arrowAlreadyExp = new Set<number>()
 const enemyAlreadyExp = new Set<number>()
 
-export const SLOWDOWN = 1
+export let SLOWDOWN = 1
+export const setSlowdown = (s: number) => (SLOWDOWN = s)
 
 const pause = (p: any) => {
 	p.staggered = true
@@ -353,14 +355,9 @@ buffsText.y = 80
 app.stage.addChild(buffsText)
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-let mmRes: null | ((v: any) => void) = null
-export const endMenu = () => {
-	if (mmRes) mmRes(null)
-}
-export const menuReady = () => mmRes !== null
 const mainMenu = () =>
 	new Promise((res) => {
-		mmRes = res
+		setRes(res)
 	})
 
 await mainMenu()

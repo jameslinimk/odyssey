@@ -75,6 +75,7 @@ export class Arrow {
 			}
 		} else {
 			enemies.forEach((e) => {
+				if (e.die) return
 				if (!this.alreadyHit.has(e.id) && this.alreadyHit.size < this.pierce && this.rect.intersects(e.rect)) {
 					this.alreadyHit.add(e.id)
 					e.hit(this.dmg, this.angle)

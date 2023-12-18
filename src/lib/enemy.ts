@@ -273,7 +273,7 @@ export class Enemy {
 			if (e === this) return
 			if (this.rect.intersects(e.rect)) {
 				const angle = this.rect.center.angle(e.rect.center)
-				push.addSet(Vec2.ZERO.project(angle, -0.02 * dt))
+				push.addSet(Vec2.ZERO.project(angle, -0.05 * dt))
 			}
 		})
 		this.vel.addSet(push)
