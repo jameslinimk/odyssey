@@ -1,4 +1,4 @@
-import { SHOW_HITBOXES, app, arrows, cameraContainer, enemies, player } from "$lib"
+import { DEV, app, arrows, cameraContainer, enemies, player } from "$lib"
 import { SCALE_MODES, Sprite, Texture } from "pixi.js"
 import { wallRects } from "./map.js"
 import { NewRectangle } from "./player.js"
@@ -51,7 +51,7 @@ export class Arrow {
 
 		this.rect = NewRectangle.fromCenter(this.pos.x, this.pos.y, 5, 5)
 
-		if (SHOW_HITBOXES) {
+		if (DEV) {
 			this.rectGraphics = new Sprite(Texture.WHITE)
 			this.rectGraphics.width = this.rect.width
 			this.rectGraphics.height = this.rect.height

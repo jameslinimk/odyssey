@@ -1,14 +1,21 @@
-import { Application, BaseTexture, Container, SCALE_MODES, Sprite, Texture } from "pixi.js"
+BaseTexture.defaultOptions.scaleMode = SCALE_MODES.NEAREST
+
+import { Application, BaseTexture, Container, Graphics, SCALE_MODES, Sprite, Text, Texture } from "pixi.js"
 import { LayeredAnim, drawLayers, fRand } from "./animations.js"
 import { arrowTexture, type Arrow } from "./arrow.js"
-import { Enemy, killed, p1Sheets } from "./enemy.js"
-import { KEY_PRESSED, MOUSE_PRESSED } from "./events.js"
+import { Enemy, killed, p1Sheets, pol1Sheets } from "./enemy.js"
+import { KEY_PRESSED, MOUSE_PRESSED, keyPressed } from "./events.js"
 import { COLLISION_TILE_SIZE, addMaps } from "./map.js"
 import { Player, ease } from "./player.js"
 import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
 
-export const SHOW_HITBOXES = false
+export const DEV = true
+
+const TOTAL_SUITORS = 108
+const MAX_AT_ONCE = 50
+const SPAWN_RATE = 20_000
+const SPAWN_CHANCE = 0.5
 
 export let arrows: Arrow[] = []
 
@@ -29,8 +36,6 @@ class NewApplication extends Application {
 export const app = new NewApplication({
 	backgroundColor: 0x000000,
 })
-BaseTexture.defaultOptions.scaleMode = SCALE_MODES.NEAREST
-app.stage.sortableChildren = true
 
 const view = app.view as HTMLCanvasElement
 document.body.appendChild(view)
@@ -82,15 +87,17 @@ spawns.forEach(([x, y]) => {
 	firstSpawns.push([x, y])
 
 	const e = new Enemy(vec(x * COLLISION_TILE_SIZE, y * COLLISION_TILE_SIZE))
-	pause(e)
+	if (!DEV) pause(e)
 	enemies.push(e)
 })
 
 const spawnMore = () => {
-	if (enemies.length > 30 || killed > 100) return
+	if (enemies.length >= MAX_AT_ONCE) return
+	let spawned = 0
 	spawns.forEach(([x, y]) => {
-		if (Math.random() > 0.3) return
-		firstSpawns.push([x, y])
+		if (Math.random() > SPAWN_CHANCE) return
+		if (enemies.length + spawned >= MAX_AT_ONCE) return
+		spawned++
 
 		const e = new Enemy(vec(x * COLLISION_TILE_SIZE, y * COLLISION_TILE_SIZE))
 		enemies.push(e)
@@ -98,40 +105,10 @@ const spawnMore = () => {
 }
 
 export const player = new Player()
-pause(player)
+if (!DEV) pause(player)
 
 const MAX_CAMERA_DISTANCE = Math.max(app.renderer.width, app.renderer.height) / 2
 const CAMERA_SPEED = 5
-
-export enum Gods {
-	Athena,
-}
-
-interface GodInfo {
-	startPower: () => void
-	endPower: () => void
-	icon: Texture
-}
-
-export const GOD_INFO: Record<Gods, GodInfo> = {
-	[Gods.Athena]: {
-		icon: Texture.from("quiver.png"),
-		startPower: () => {
-			player.mod("speed", 0.15)
-			player.mod("arrow_dmg", 0.2)
-			player.mod("slash_dmg", 0.2)
-			player.mod("dmgTaken", -0.2)
-		},
-		endPower: () => {
-			player.demod("speed", 0.15)
-			player.demod("arrow_dmg", 0.2)
-			player.demod("slash_dmg", 0.2)
-			player.demod("dmgTaken", -0.2)
-		},
-	},
-}
-
-export const gods = [Gods.Athena]
 
 const wait = (time: number) => new Promise((res) => setTimeout(res, time))
 
@@ -169,9 +146,6 @@ const awaitAnim = async (anim: LayeredAnim) =>
 const axeTexture = Texture.from("axe.png")
 
 const cutscene = async () => {
-	// cameraContainer.position.x = -600 + app.renderer.width / 2
-	// cameraContainer.position.y = -200 + app.renderer.height / 2
-
 	const t = (v: Vec2) => v.scale(-1).add(vec(app.renderer.width / 2, app.renderer.height / 2))
 
 	for (let i = 0; i < 12; i++) {
@@ -186,7 +160,7 @@ const cutscene = async () => {
 
 	const idles: LayeredAnim[] = []
 	firstSpawns.forEach(([x, y], i) => {
-		const sheet = p1Sheets[i]
+		const sheet = p1Sheets[enemies[i].sheetId]
 		const idle = drawLayers(
 			`stand_up`,
 			(s) => {
@@ -215,7 +189,6 @@ const cutscene = async () => {
 	})
 	walkUp.add()
 	await tweenTo(vec(600, 600), vec(600, 250), 3000, (v) => {
-		console.log(v)
 		walkUp.do((s) => {
 			s.x = v.x
 			s.y = v.y
@@ -265,22 +238,170 @@ const cutscene = async () => {
 		arrow.alpha = v.y
 	}).then(() => arrow.destroy())
 	shoot.rem()
-	idleDown.add()
 
+	idleDown.add()
 	await wait(2000)
+
+	const draws: LayeredAnim[] = []
+	idles.forEach((i, x) => {
+		i.rem()
+		const sheet = pol1Sheets[enemies[x].sheetId]
+		const draw = drawLayers(
+			`pol_draw_up`,
+			(s) => {
+				s.animationSpeed = fRand(0.07, 0.13)
+				s.loop = false
+				s.play()
+				s.anchor.set(0.5, 0.5)
+				s.x = i.first.x
+				s.y = i.first.y
+			},
+			sheet,
+		)
+		draw.add()
+		draws.push(draw)
+	})
+
+	await wait(500)
+
+	const drawDown = drawLayers("draw_down", (s) => {
+		s.animationSpeed = 0.05
+		s.loop = false
+		s.play()
+		s.x = 600
+		s.y = 250
+	})
 	idleDown.rem()
-	idles.forEach((i) => i.rem())
-	resume(player)
-	enemies.forEach((e) => resume(e))
+	drawDown.add()
+	await awaitAnim(drawDown)
+
+	await wait(800)
+	drawDown.rem()
+	draws.forEach((d) => d.rem())
 }
 
-await cutscene()
+const suitorCounter = new Text(`Suitors Slayed: ${killed}/${TOTAL_SUITORS}`, {
+	fontFamily: "Lucida Console",
+	fontSize: 24,
+	fill: 0xffffff,
+})
+suitorCounter.anchor.set(1, 0)
+suitorCounter.x = app.renderer.width - 10
+suitorCounter.y = 10
+app.stage.addChild(suitorCounter)
+
+const timeCounter = new Text(`0:00`, {
+	fontFamily: "Lucida Console",
+	fontSize: 24,
+	fill: 0xff0000,
+})
+timeCounter.anchor.set(0.5, 0)
+timeCounter.x = app.renderer.width / 2
+timeCounter.y = 10
+app.stage.addChild(timeCounter)
+
+const overScreen = new Container()
+const black = new Graphics()
+black.beginFill(0x000000)
+black.drawRect(0, 0, app.renderer.width, app.renderer.height)
+black.endFill()
+overScreen.addChild(black)
+const overText = new Text("You Died", {
+	fontFamily: "Lucida Console",
+	fontSize: 64,
+	fill: 0xff0000,
+})
+overText.anchor.set(0.5, 0.5)
+overText.x = app.renderer.width / 2
+overText.y = app.renderer.height / 2
+const restartText = new Text("Press R to Restart", {
+	fontFamily: "Lucida Console",
+	fontSize: 24,
+	fill: 0xffffff,
+})
+restartText.anchor.set(0.5, 0.5)
+restartText.x = app.renderer.width / 2
+restartText.y = app.renderer.height / 2 + 70
+overScreen.addChild(restartText)
+overScreen.addChild(overText)
+let startedEnd = false
+
+const winScreen = new Container()
+const winBlack = new Graphics()
+winBlack.beginFill(0x000000)
+winBlack.drawRect(0, 0, app.renderer.width, app.renderer.height)
+winBlack.endFill()
+winScreen.addChild(winBlack)
+const winText = new Text("You Won!", {
+	fontFamily: "Lucida Console",
+	fontSize: 64,
+	fill: 0x00ff00,
+})
+winText.anchor.set(0.5, 0.5)
+winText.x = app.renderer.width / 2
+winText.y = app.renderer.height / 2
+winScreen.addChild(winText)
+
+export const buffsText = new Text("", {
+	fontFamily: "Lucida Console",
+	fontSize: 12,
+	fill: 0xffffff,
+})
+buffsText.anchor.set(0, 0)
+buffsText.x = 10
+buffsText.y = 80
+app.stage.addChild(buffsText)
+
+if (!DEV) {
+	await cutscene()
+	resume(player)
+	enemies.forEach((e) => resume(e))
+} else {
+	await wait(500)
+}
+
+KEY_PRESSED.clear()
+MOUSE_PRESSED.clear()
+const start = performance.now()
 setInterval(() => {
 	spawnMore()
-}, 20_000)
+	console.log(enemies.length)
+}, SPAWN_RATE)
+let firstWin = false
 app.ticker.add((dt) => {
 	dt *= SLOWDOWN
 	app.elapsed += dt
+
+	const win = killed > TOTAL_SUITORS
+	const over = win || player.fullyDead
+
+	if (win) {
+		if (!firstWin) {
+			firstWin = true
+			player.hp = Infinity
+			enemies.forEach((e) => e.hit(Infinity))
+			winScreen.alpha = 0
+			app.stage.addChild(winScreen)
+		}
+		winScreen.alpha = Math.min(1, winScreen.alpha + 0.01)
+		if (keyPressed("KeyR")) location.reload()
+	}
+
+	if (!over) {
+		const now = performance.now()
+		timeCounter.text = `${Math.floor((now - start) / 1000 / 60)}:${(Math.floor((now - start) / 1000) % 60).toString().padStart(2, "0")}`
+		suitorCounter.text = `Suitors Slayed: ${killed}/${TOTAL_SUITORS}`
+	}
+
+	if (player.fullyDead) {
+		if (!startedEnd) {
+			startedEnd = true
+			overScreen.alpha = 0
+			app.stage.addChild(overScreen)
+		}
+		overScreen.alpha = Math.min(1, overScreen.alpha + 0.01)
+		if (keyPressed("KeyR")) location.reload()
+	}
 
 	const pos = vec(cameraContainer.position.x, cameraContainer.position.y)
 	const target = vec(-player.rect.centerX + app.renderer.width / 2, -player.rect.centerY + app.renderer.height / 2)
@@ -294,10 +415,6 @@ app.ticker.add((dt) => {
 
 	cameraContainer.position.x = newPos.x
 	cameraContainer.position.y = newPos.y
-
-	if (killed > 100) {
-		alert("You win!")
-	}
 
 	player.update(dt)
 	arrows.forEach((a) => {
@@ -316,24 +433,27 @@ app.ticker.add((dt) => {
 		}
 		a.update(dt)
 	})
-	enemies.forEach((e) => {
-		if (enemyAlreadyExp.has(e.id)) return
-		if (e.expire) {
-			const t = setInterval(() => {
-				e.anim.do((s) => (s.alpha -= 0.02))
-				if (e.anim.first.alpha <= 0) {
-					e.anim.do((s) => s.destroy())
-					e.rectGraphics?.destroy()
-					clearInterval(t)
-				}
-			}, 10)
-			enemyAlreadyExp.add(e.id)
-			return
-		}
-		e.update(dt)
-	})
-	arrows = arrows.filter((a) => a.arrow.alpha > 0)
-	enemies = enemies.filter((e) => e.anim.first.alpha > 0)
+
+	if (!player.fullyDead || win) {
+		enemies.forEach((e) => {
+			if (enemyAlreadyExp.has(e.id)) return
+			if (e.expire) {
+				const t = setInterval(() => {
+					e.anim.do((s) => (s.alpha -= 0.02))
+					if (e.anim.first.alpha <= 0) {
+						e.anim.do((s) => s.destroy())
+						e.rectGraphics?.destroy()
+						clearInterval(t)
+					}
+				}, 10)
+				enemyAlreadyExp.add(e.id)
+				return
+			}
+			e.update(dt)
+		})
+		arrows = arrows.filter((a) => a.arrow.alpha > 0)
+		enemies = enemies.filter((e) => e.anim.first.alpha > 0)
+	}
 
 	KEY_PRESSED.clear()
 	MOUSE_PRESSED.clear()

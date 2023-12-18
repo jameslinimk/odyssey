@@ -1,7 +1,7 @@
-import { SHOW_HITBOXES, SLOWDOWN, app, cameraContainer, clamp, player } from "$lib"
+import { DEV, SLOWDOWN, app, cameraContainer, clamp, enemies, player } from "$lib"
 import { Sprite, Texture } from "pixi.js"
 import { p1PolSheet, p1Sheet, p2PolSheet, p3PolSheet } from "./animation_sheets.js"
-import { Directions, LayeredAnim, angleAsDir, drawLayers, fRand, fullSheets, parseAll, randSuitor } from "./animations.js"
+import { Directions, LayeredAnim, angleAsDir, drawLayers, fRand, fullSheets, iRand, parseAll, randSuitor } from "./animations.js"
 import { MAP_SCALE, astarVec, wallRects } from "./map.js"
 import { NewRectangle, OFFSET_X, OFFSET_Y, ease } from "./player.js"
 import spawns from "./spawns.json"
@@ -11,7 +11,7 @@ export const SUITORS = spawns.length
 const configs = new Array(SUITORS).fill(0).map(() => randSuitor("pol"))
 console.log({ configs })
 export const p1Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p1Sheet(c), ["7tlb", "6tla"]))))
-const pol1Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p1PolSheet(c), ["7tlb"]))))
+export const pol1Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p1PolSheet(c), ["7tlb"]))))
 const pol2Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p2PolSheet(c), ["7tlb"]))))
 const pol3Sheets = await Promise.all(configs.map((c) => parseAll(fullSheets(c, p3PolSheet(c), ["7tlb"]))))
 let id = 0
@@ -21,8 +21,10 @@ export let killed = 0
 
 export class Enemy {
 	rect: NewRectangle
+	colRect: NewRectangle
 	rectGraphics: Sprite | null = null
 	id = id++
+	sheetId = iRand(0, SUITORS - 1)
 
 	slashing = false
 	lastSlash = -Infinity
@@ -41,7 +43,7 @@ export class Enemy {
 					s.animationSpeed = 0.08 * SLOWDOWN
 					;(s as any).ogSpeed = 0.08 * SLOWDOWN
 				},
-				pol2Sheets[this.id],
+				pol2Sheets[this.sheetId],
 			),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -54,7 +56,7 @@ export class Enemy {
 					s.animationSpeed = 0.15 * SLOWDOWN
 					;(s as any).ogSpeed = 0.15 * SLOWDOWN
 				},
-				pol2Sheets[this.id],
+				pol2Sheets[this.sheetId],
 			),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -67,7 +69,7 @@ export class Enemy {
 					s.animationSpeed = 0.15 * SLOWDOWN
 					;(s as any).ogSpeed = 0.15 * SLOWDOWN
 				},
-				pol1Sheets[this.id],
+				pol1Sheets[this.sheetId],
 			),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -81,7 +83,7 @@ export class Enemy {
 					s.loop = false
 					;(s as any).ogSpeed = 0.05 * SLOWDOWN
 				},
-				pol1Sheets[this.id],
+				pol1Sheets[this.sheetId],
 			),
 		]),
 	) as Record<Directions, LayeredAnim>
@@ -95,13 +97,13 @@ export class Enemy {
 					s.loop = false
 					;(s as any).ogSpeed = this.slashSpeed * SLOWDOWN
 				},
-				pol3Sheets[this.id],
+				pol3Sheets[this.sheetId],
 			),
 		]),
 	) as Record<Directions, LayeredAnim>
 
 	anim = this.walk[Directions.Right]
-	speed = fRand(0.5, 0.8)
+	speed = fRand(0.5, 1.2)
 
 	/* ----------------------------- Modifier logic ----------------------------- */
 	modMap: Partial<Record<keyof this, number>> = {}
@@ -166,18 +168,20 @@ export class Enemy {
 		})
 	}
 
-	constructor(pos: Vec2) {
+	constructor(pos: Vec2, sheetId?: number) {
+		if (sheetId !== undefined) this.sheetId = sheetId
 		this.changeAnim(this.anim, false)
 
 		this.rect = NewRectangle.fromCenter(pos.x, pos.y, 24 * MAP_SCALE, 24 * MAP_SCALE * 2)
+		this.colRect = NewRectangle.fromCenter(pos.x, pos.y, (24 * MAP_SCALE) / 2, (24 * MAP_SCALE * 2) / 2)
 
-		if (SHOW_HITBOXES) {
+		if (DEV) {
 			this.rectGraphics = new Sprite(Texture.WHITE)
-			this.rectGraphics.width = this.rect.width
-			this.rectGraphics.height = this.rect.height
+			this.rectGraphics.width = this.colRect.width
+			this.rectGraphics.height = this.colRect.height
 			this.rectGraphics.alpha = 0.8
-			this.rectGraphics.x = this.rect.x
-			this.rectGraphics.y = this.rect.y
+			this.rectGraphics.x = this.colRect.x
+			this.rectGraphics.y = this.colRect.y
 			this.rectGraphics.zIndex = 2
 			cameraContainer.addChild(this.rectGraphics)
 		}
@@ -185,8 +189,8 @@ export class Enemy {
 
 	updateGraphics() {
 		if (!this.rectGraphics) return
-		this.rectGraphics.x = this.rect.x
-		this.rectGraphics.y = this.rect.y
+		this.rectGraphics.x = this.colRect.x
+		this.rectGraphics.y = this.colRect.y
 	}
 
 	path: Vec2[] = []
@@ -212,7 +216,6 @@ export class Enemy {
 		this.vel.clear()
 		let dir = angleAsDir(angleToPlayer)
 
-		this.path = astarVec(this.rect.center, player.rect.center) ?? []
 		const dist = this.rect.center.distance(player.rect.center)
 		const there = dist < this.slashDistance
 
@@ -239,6 +242,7 @@ export class Enemy {
 		}
 		if (this.slashing && this.staggered) this.slashing = false
 
+		this.path = astarVec(this.rect.center, player.rect.center) ?? []
 		if (!this.staggered && this.path.length > 1 && !there) {
 			const target = this.path[1]
 			const angle = this.rect.center.angle(target)
@@ -263,27 +267,38 @@ export class Enemy {
 			else if (!this.slashing) this.changeAnim(this.walk[dir])
 		}
 
+		/* ---------------------------- Push from enemies --------------------------- */
+		const push = vec(0, 0)
+		enemies.forEach((e) => {
+			if (e === this) return
+			if (this.rect.intersects(e.rect)) {
+				const angle = this.rect.center.angle(e.rect.center)
+				push.addSet(Vec2.ZERO.project(angle, -0.02 * dt))
+			}
+		})
+		this.vel.addSet(push)
+
 		/* -------------------------------- Collision ------------------------------- */
 		if (!this.vel.isZero()) {
-			const hRect = this.rect.addVec(vec(this.vel.x, 0))
+			const hRect = this.colRect.addVec(vec(this.vel.x, 0))
 			wallRects.forEach((w) => {
 				if (hRect.intersects(w)) {
 					if (this.vel.x > 0) {
-						this.rect.x = w.x - this.rect.width
+						this.colRect.x = w.x - this.colRect.width
 					} else if (this.vel.x < 0) {
-						this.rect.x = w.x + w.width
+						this.colRect.x = w.x + w.width
 					}
 					this.vel.x = 0
 				}
 			})
 
-			const vRect = this.rect.addVec(vec(0, this.vel.y))
+			const vRect = this.colRect.addVec(vec(0, this.vel.y))
 			wallRects.forEach((w) => {
 				if (vRect.intersects(w)) {
 					if (this.vel.y > 0) {
-						this.rect.y = w.y - this.rect.height
+						this.colRect.y = w.y - this.colRect.height
 					} else if (this.vel.y < 0) {
-						this.rect.y = w.y + w.height
+						this.colRect.y = w.y + w.height
 					}
 					this.vel.y = 0
 				}
@@ -291,6 +306,7 @@ export class Enemy {
 		}
 
 		this.rect.addVecSet(this.vel)
+		this.colRect.center = this.rect.center
 		this.anim.do((s) => {
 			s.x = this.rect.x - OFFSET_X + 4
 			s.y = this.rect.y - OFFSET_Y + 10

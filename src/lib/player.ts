@@ -1,13 +1,101 @@
-import { SHOW_HITBOXES, SLOWDOWN, app, cameraContainer, clamp, enemies } from "$lib"
-import { Graphics, Rectangle, Sprite, Texture } from "pixi.js"
+import { DEV, SLOWDOWN, app, buffsText, cameraContainer, clamp, enemies } from "$lib"
+import { AnimatedSprite, Graphics, Rectangle, SCALE_MODES, Sprite, Text, Texture } from "pixi.js"
 import { Directions, LayeredAnim, angleAsDir, bird, dirAsAngle, drawLayers } from "./animations.js"
 import { Arrow } from "./arrow.js"
 import { keyDown, keyPressed, mouseDown, mousePressed } from "./events.js"
-import { MAP_SCALE, wallRects } from "./map.js"
+import { MAP_SCALE, map, wallRects } from "./map.js"
 import { Vec2, vec } from "./vec2.js"
 
 export const OFFSET_X = 27
 export const OFFSET_Y = 19
+
+const thunderboltSprite = new AnimatedSprite(new Array(23).fill(0).map((_, i) => Texture.from(`bolt/big-bolt${i + 1}.png`)))
+
+export enum Gods {
+	Athena,
+	Zeus,
+}
+interface GodInfo {
+	startPower: (player: Player) => void
+	endPower?: (player: Player) => void
+	icon: Texture
+	delay: number
+	name: string
+	duration?: number
+}
+
+export const GOD_INFO: Record<Gods, GodInfo> = {
+	[Gods.Athena]: {
+		name: "Athena",
+		delay: 2_000,
+		duration: 15_000,
+		icon: Texture.from("athena.png"),
+		startPower: (player: Player) => {
+			player.mod("speed", 0.2)
+			player.mod("arrow_dmg", 1)
+			player.mod("slash_pierce", 0.5)
+			player.mod("trust_pierce", 2)
+			player.mod("dmg_taken", -0.2)
+			player.shield = player.maxShield
+		},
+		endPower: (player: Player) => {
+			player.demod("speed", 0.2)
+			player.demod("arrow_dmg", 1)
+			player.demod("slash_pierce", 0.5)
+			player.demod("trust_pierce", 2)
+			player.demod("dmg_taken", -0.2)
+			player.shield = 0
+		},
+	},
+	[Gods.Zeus]: {
+		name: "Zeus",
+		delay: 500,
+		icon: Texture.from("zeus.png"),
+		startPower: () => {
+			thunderboltSprite.animationSpeed = 0.2
+			thunderboltSprite.loop = false
+			thunderboltSprite.gotoAndPlay(0)
+			thunderboltSprite.anchor.set(0.5, 0.5)
+			thunderboltSprite.x = app.mousePos.x
+			thunderboltSprite.y = app.mousePos.y - 30
+			thunderboltSprite.zIndex = 2
+			cameraContainer.addChild(thunderboltSprite)
+
+			thunderboltSprite.onFrameChange = (f) => {
+				if (f === 11) {
+					const rect = NewRectangle.fromCenter(thunderboltSprite.x, thunderboltSprite.y + 30, 70, 70)
+					enemies.forEach((e) => {
+						if (rect.intersects(e.rect)) {
+							const angle = rect.center.angle(e.rect.center)
+							e.hit(Infinity, angle)
+						}
+					})
+
+					if (DEV) {
+						const rectGraphics = new Sprite(Texture.WHITE)
+						rectGraphics.width = rect.width
+						rectGraphics.height = rect.height
+						rectGraphics.alpha = 0.2
+						rectGraphics.x = rect.x
+						rectGraphics.y = rect.y
+						rectGraphics.zIndex = 2
+						cameraContainer.addChild(rectGraphics)
+						setTimeout(() => {
+							rectGraphics.destroy()
+						}, 1000)
+					}
+				}
+			}
+
+			thunderboltSprite.onComplete = () => {
+				cameraContainer.removeChild(thunderboltSprite)
+			}
+		},
+	},
+}
+
+export const god1 = Gods.Athena
+export const god2 = Gods.Zeus
 
 export const ease = (x: number) => clamp(1 - Math.pow(1 - x, 3), 0, 1)
 
@@ -101,7 +189,7 @@ const STRAIGHT_PAUSE = 4
 export class Player {
 	maxHp = 100
 	hp = this.maxHp
-	dmgTaken = 1
+	dmg_taken = 1
 	maxShield = 100
 	shield = 0
 	maxStamina = 100
@@ -130,7 +218,7 @@ export class Player {
 		if (this.iframe || this.lastHit + this.hitCooldown > app.elapsed) return
 		if (Math.random() >= 0.8) return this.birdSave()
 
-		dmg *= this.dmgTaken
+		dmg *= this.dmg_taken
 
 		this.dieDir = angleAsDir(staggerAngle + Math.PI)
 		this.lastHit = app.elapsed
@@ -172,6 +260,11 @@ export class Player {
 	shieldBar = new ProgressBar(10, 10, 200, 10, this.maxShield, this.shield, 0x0000ff)
 	staminaBar = new ProgressBar(10, 50, 200, 20, this.maxStamina, this.stamina, 0xffffff)
 
+	lastGod1Use = -Infinity
+	lastGod1UseDate = -Infinity
+	lastGod2Use = -Infinity
+	lastGod2UseDate = -Infinity
+
 	shootFrame = 0
 	get shootReady() {
 		return this.shootFrame === STRAIGHT_PAUSE
@@ -195,6 +288,8 @@ export class Player {
 	attackCooldown = 15
 	alreadyHit = new Set<number>()
 	attackDelayBar: ProgressBar
+	god1DelayBar: ProgressBar
+	god2DelayBar: ProgressBar
 
 	/* ----------------------------- Modifier logic ----------------------------- */
 	modMap: Partial<Record<keyof this, number>> = {}
@@ -215,7 +310,7 @@ export class Player {
 		this[attr] = (this.ogMap[attr]! + this.ogMap[attr]! * this.modMap[attr]!) as any
 	}
 
-	rect = NewRectangle.fromCenter(600, 300, 12 * MAP_SCALE, 12 * MAP_SCALE * 2)
+	rect = NewRectangle.fromCenter(630, 280, 12 * MAP_SCALE, 12 * MAP_SCALE * 2)
 	rectGraphics: Sprite | null = null
 	idles = Object.fromEntries(
 		Object.values(Directions).map((d) => [
@@ -362,7 +457,7 @@ export class Player {
 	constructor() {
 		this.changeAnim(this.anim, false)
 
-		if (SHOW_HITBOXES) {
+		if (DEV) {
 			// Visualizing hitbox
 			this.rectGraphics = new Sprite(Texture.WHITE)
 			this.rectGraphics.width = this.rect.width
@@ -395,6 +490,70 @@ export class Player {
 		this.attackDelayBar = new ProgressBar(75 + 7, app.renderer.height - 75 - 7, 75, 75, this.attackCooldown, this.attackCooldown, 0x000000, 0x000000)
 		this.attackDelayBar.base.alpha = 0
 		this.attackDelayBar.cur.alpha = 0.6
+
+		const switchBind = new Text("R", {
+			fontSize: 25,
+			fill: 0xffffff,
+			fontWeight: "bold",
+			stroke: 0x000000,
+			strokeThickness: 5,
+		})
+		switchBind.anchor.set(0.5, 0.5)
+		switchBind.x = 75 + 7
+		switchBind.y = app.renderer.height - 75 - 7 + 75 / 2
+		app.stage.addChild(switchBind)
+
+		const god = GOD_INFO[god1]
+		const sprite = Sprite.from(god.icon)
+		sprite.texture.baseTexture.scaleMode = SCALE_MODES.NEAREST
+		sprite.anchor.set(1, 1)
+		sprite.x = app.renderer.width - 7
+		sprite.y = app.renderer.height - 7
+		sprite.width = 125
+		sprite.height = 125
+		app.stage.addChild(sprite)
+
+		this.god1DelayBar = new ProgressBar(sprite.x - sprite.width, sprite.y - sprite.height, sprite.width, sprite.height, god.delay, 0, 0x000000, 0x000000)
+		this.god1DelayBar.base.alpha = 0
+		this.god1DelayBar.cur.alpha = 0.7
+
+		const godBind = new Text("E", {
+			fontSize: 50,
+			fill: 0xffffff,
+			fontWeight: "bold",
+			stroke: 0x000000,
+			strokeThickness: 5,
+		})
+		godBind.anchor.set(0.5, 0.5)
+		godBind.x = sprite.x - sprite.width / 2
+		godBind.y = sprite.y - sprite.height / 2
+		app.stage.addChild(godBind)
+
+		const g2 = GOD_INFO[god2]
+		const sprite2 = Sprite.from(g2.icon)
+		sprite2.texture.baseTexture.scaleMode = SCALE_MODES.NEAREST
+		sprite2.anchor.set(1, 1)
+		sprite2.x = app.renderer.width - 14 - 125
+		sprite2.y = app.renderer.height - 7
+		sprite2.width = 80
+		sprite2.height = 80
+		app.stage.addChild(sprite2)
+
+		this.god2DelayBar = new ProgressBar(sprite2.x - sprite2.width, sprite2.y - sprite2.height, sprite2.width, sprite2.height, g2.delay, 0, 0x000000, 0x000000)
+		this.god2DelayBar.base.alpha = 0
+		this.god2DelayBar.cur.alpha = 0.7
+
+		const god2Bind = new Text("Q", {
+			fontSize: 20,
+			fill: 0xffffff,
+			fontWeight: "bold",
+			stroke: 0x000000,
+			strokeThickness: 5,
+		})
+		god2Bind.anchor.set(0.5, 0.5)
+		god2Bind.x = sprite2.x - sprite2.width / 2
+		god2Bind.y = sprite2.y - sprite2.height / 2
+		app.stage.addChild(god2Bind)
 	}
 
 	birdOffset = vec(20, -20)
@@ -468,7 +627,6 @@ export class Player {
 					s.y = this.rect.y - OFFSET_Y
 				})
 				this.anim.first.onComplete = () => {
-					alert("Fully dead")
 					this.fullyDead = true
 				}
 			}
@@ -509,6 +667,7 @@ export class Player {
 				an[atmDir].first.onComplete = undefined
 			}
 		}
+		if (this.staggered) this.attacking = false
 		if (this.attacking) {
 			const slash = this.anim.anim.includes("slash")
 			if (slash) this.vel.projectSet(this.attackAngle, 2 * dt)
@@ -525,7 +684,7 @@ export class Player {
 				}
 			})
 
-			if (SHOW_HITBOXES) {
+			if (DEV) {
 				const hitRectGraphics = new Sprite(Texture.WHITE)
 				hitRectGraphics.width = hitRect.width
 				hitRectGraphics.height = hitRect.height
@@ -680,7 +839,7 @@ export class Player {
 		}
 
 		/* -------------------------------- Switching ------------------------------- */
-		if (keyPressed("KeyV") && !this.switching && this.lastSwitch + this.switchCooldown < app.elapsed && !this.staggered) {
+		if (keyPressed("KeyR") && !this.switching && this.lastSwitch + this.switchCooldown < app.elapsed && !this.staggered) {
 			this.switching = true
 			this.attacking = false
 			this.endShoot = false
@@ -713,6 +872,30 @@ export class Player {
 			this.attackMode = this.attackMode === "bow" ? "pol" : "bow"
 		}
 
+		/* ----------------------------------- God ---------------------------------- */
+		const g1 = GOD_INFO[god1]
+		const can = !this.staggered && !this.switching && !this.dodging && !this.attacking && !this.endShoot && !this.pulling
+		if (keyPressed("KeyE") && this.lastGod1Use + g1.delay < app.elapsed && can) {
+			g1.startPower(this)
+			this.lastGod1Use = app.elapsed
+			this.lastGod1UseDate = Date.now()
+			if (g1.endPower !== undefined)
+				setTimeout(() => {
+					g1.endPower!(this)
+				}, g1.duration)
+		}
+
+		const g2 = GOD_INFO[god2]
+		if (keyPressed("KeyQ") && this.lastGod2Use + g2.delay < app.elapsed && can) {
+			g2.startPower(this)
+			this.lastGod2Use = app.elapsed
+			this.lastGod2UseDate = Date.now()
+			if (g2.endPower !== undefined)
+				setTimeout(() => {
+					g2.endPower!(this)
+				}, g2.duration)
+		}
+
 		/* -------------------------------- Collision ------------------------------- */
 		const hRect = this.rect.addVec(vec(this.vel.x, 0))
 		wallRects.forEach((w) => {
@@ -738,6 +921,13 @@ export class Player {
 			}
 		})
 
+		const xBound = map.width
+		const yBound = map.height
+		if (this.rect.x < 0) this.rect.x = 0
+		if (this.rect.x + this.rect.width > xBound) this.rect.x = xBound - this.rect.width
+		if (this.rect.y < 0) this.rect.y = 0
+		if (this.rect.y + this.rect.height > yBound) this.rect.y = yBound - this.rect.height
+
 		/* --------------------------------- Updates -------------------------------- */
 		this.rect.addVecSet(this.vel)
 		this.anim.do((s) => {
@@ -752,16 +942,31 @@ export class Player {
 		this.staminaBar.update(this.stamina)
 		this.shootDelayBar.update(clamp(this.lastShot + this.shootDelay - app.elapsed, 0, this.shootDelay))
 		this.attackDelayBar.update(clamp(this.lastAttack + this.attackCooldown - app.elapsed, 0, this.attackCooldown))
+		this.god1DelayBar.update(clamp(this.lastGod1Use + GOD_INFO[god1].delay - app.elapsed, 0, GOD_INFO[god1].delay))
+		this.god2DelayBar.update(clamp(this.lastGod2Use + GOD_INFO[god2].delay - app.elapsed, 0, GOD_INFO[god2].delay))
 
 		if (this.hide) this.anim.do((s) => (s.alpha = 0))
 		else this.anim.do((s) => (s.alpha = 1))
 
-		/* --------------------------------- Testing -------------------------------- */
-		if (keyPressed("KeyF")) {
-			this.hit(10)
+		const g1Active = g1.duration && this.lastGod1UseDate + g1.duration > Date.now()
+		const g2Active = g2.duration && this.lastGod2UseDate + g2.duration > Date.now()
+
+		let bt = "Active buffs:\n"
+		if (g1Active) {
+			const remaining = ((this.lastGod1UseDate + g1.duration! - Date.now()) / 1000).toFixed(1)
+			bt += `${g1.name} (${remaining})`
 		}
-		if (keyPressed("KeyG")) {
-			this.hit(85)
+		if (g2Active) {
+			const remaining = ((this.lastGod2UseDate + g2.duration! - Date.now()) / 1000).toFixed(1)
+			bt += `${g2.name} (${remaining})`
+		}
+		if (!g1Active && !g2Active) bt += "None"
+		buffsText.text = bt
+
+		/* --------------------------------- Testing -------------------------------- */
+		if (keyPressed("KeyH")) {
+			this.endStagger = -Infinity
+			this.staggered = false
 		}
 	}
 }

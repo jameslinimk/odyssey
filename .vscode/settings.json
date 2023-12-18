@@ -12,6 +12,8 @@
 		"humn",
 		"lerp",
 		"Linfo",
+		"Lucida",
+		"neui",
 		"overmap",
 		"pfht",
 		"pfpn",
@@ -22,5 +24,14 @@
 		"spritesheets",
 		"tinyqueue",
 		"undi"
-	]
+	],
+	"files.exclude": {
+		"**/.git": true,
+		"**/.svn": true,
+		"**/.hg": true,
+		"**/CVS": true,
+		"**/.DS_Store": true,
+		"**/Thumbs.db": true,
+		"**/node_modules": true
+	}
 }

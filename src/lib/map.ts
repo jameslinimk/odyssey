@@ -1,4 +1,4 @@
-import { SHOW_HITBOXES, cameraContainer } from "$lib"
+import { DEV, cameraContainer } from "$lib"
 import { Sprite, Texture } from "pixi.js"
 import { astar, type Graph, type Point } from "./astar.js"
 import collision from "./collision.json"
@@ -59,7 +59,7 @@ export const addMaps = () => {
 		const rect = new NewRectangle(x * COLLISION_TILE_SIZE, y * COLLISION_TILE_SIZE, COLLISION_TILE_SIZE, COLLISION_TILE_SIZE)
 		wallRects.push(rect)
 
-		if (SHOW_HITBOXES) {
+		if (DEV) {
 			const rectGraphics = new Sprite(Texture.WHITE)
 			rectGraphics.width = rect.width
 			rectGraphics.height = rect.height
