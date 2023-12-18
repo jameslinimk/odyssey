@@ -36,6 +36,7 @@ export const GOD_INFO: Record<Gods, GodInfo> = {
 			player.mod("slash_pierce", 0.5)
 			player.mod("trust_pierce", 2)
 			player.mod("dmg_taken", -0.2)
+			player.birdChance = 0.4
 			player.shield = player.maxShield
 		},
 		endPower: (player: Player) => {
@@ -44,6 +45,7 @@ export const GOD_INFO: Record<Gods, GodInfo> = {
 			player.demod("slash_pierce", 0.5)
 			player.demod("trust_pierce", 2)
 			player.demod("dmg_taken", -0.2)
+			player.birdChance = 0.8
 			player.shield = 0
 		},
 	},
@@ -215,9 +217,10 @@ export class Player {
 	get die() {
 		return this.hp <= 0
 	}
+	birdChance = 0.8
 	hit(dmg: number, staggerAngle = 0) {
 		if (this.iframe || this.lastHit + this.hitCooldown > app.elapsed) return
-		if (Math.random() >= 0.8) return this.birdSave()
+		if (Math.random() >= this.birdChance) return this.birdSave()
 
 		dmg *= this.dmg_taken
 

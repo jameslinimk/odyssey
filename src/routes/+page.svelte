@@ -26,5 +26,16 @@
 		width: 100%;
 		height: 100%;
 		background-color: black;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	button {
+		width: 100px;
+		height: 50px;
+		font-family: "Lucida Console", "Courier New", monospace;
+		font-weight: bold;
+		font-size: 20px;
 	}
 </style>

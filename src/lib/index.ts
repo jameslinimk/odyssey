@@ -6,12 +6,13 @@ import { arrowTexture, type Arrow } from "./arrow.js"
 import { Enemy, killed, p1Sheets, pol1Sheets } from "./enemy.js"
 import { KEY_PRESSED, MOUSE_PRESSED, keyPressed } from "./events.js"
 import { COLLISION_TILE_SIZE, addMaps } from "./map.js"
+import { addPickup, clearPicks, pickups } from "./pickup.js"
 import { Player, ease } from "./player.js"
 import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
 import { setRes } from "./writables.js"
 
-export const DEV = false
+export const DEV = true
 
 const TOTAL_SUITORS = 108
 const MAX_AT_ONCE = 50
@@ -457,6 +458,7 @@ app.ticker.add((dt) => {
 					}
 				}, 10)
 				enemyAlreadyExp.add(e.id)
+				if (Math.random() > 0.1) addPickup(e.rect.center)
 				return
 			}
 			e.update(dt)
@@ -464,6 +466,8 @@ app.ticker.add((dt) => {
 		arrows = arrows.filter((a) => a.arrow.alpha > 0)
 		enemies = enemies.filter((e) => e.anim.first.alpha > 0)
 	}
+	pickups.forEach((p) => p.update())
+	clearPicks()
 
 	KEY_PRESSED.clear()
 	MOUSE_PRESSED.clear()
