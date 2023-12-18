@@ -10,7 +10,7 @@ import { Player, ease } from "./player.js"
 import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
 
-export const DEV = true
+export const DEV = false
 
 const TOTAL_SUITORS = 108
 const MAX_AT_ONCE = 50
@@ -145,9 +145,9 @@ const awaitAnim = async (anim: LayeredAnim) =>
 
 const axeTexture = Texture.from("axe.png")
 
-const cutscene = async () => {
-	const t = (v: Vec2) => v.scale(-1).add(vec(app.renderer.width / 2, app.renderer.height / 2))
+const t = (v: Vec2) => v.scale(-1).add(vec(app.renderer.width / 2, app.renderer.height / 2))
 
+const cutscene = async () => {
 	for (let i = 0; i < 12; i++) {
 		const axe = new Sprite(axeTexture)
 		axe.anchor.set(0.5, 0.5)
@@ -177,7 +177,7 @@ const cutscene = async () => {
 		idles.push(idle)
 	})
 
-	await tweenTo(t(vec(600, 0)), t(vec(600, 300)), 750, (v) => {
+	await tweenTo(t(vec(630, 0)), t(vec(630, 300)), 750, (v) => {
 		cameraContainer.position.x = v.x
 		cameraContainer.position.y = v.y
 	})
@@ -342,7 +342,7 @@ winText.x = app.renderer.width / 2
 winText.y = app.renderer.height / 2
 winScreen.addChild(winText)
 
-export const buffsText = new Text("", {
+export const buffsText = new Text("Active buffs:\nNone", {
 	fontFamily: "Lucida Console",
 	fontSize: 12,
 	fill: 0xffffff,
@@ -351,6 +351,19 @@ buffsText.anchor.set(0, 0)
 buffsText.x = 10
 buffsText.y = 80
 app.stage.addChild(buffsText)
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let mmRes: null | ((v: any) => void) = null
+export const endMenu = () => {
+	if (mmRes) mmRes(null)
+}
+export const menuReady = () => mmRes !== null
+const mainMenu = () =>
+	new Promise((res) => {
+		mmRes = res
+	})
+
+await mainMenu()
 
 if (!DEV) {
 	await cutscene()
