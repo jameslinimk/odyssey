@@ -4,8 +4,8 @@
 	"private": true,
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build && shx rm -rf docs/unused",
-		"moveNeu": "shx rm -rf neu/resources && shx mv docs neu && shx mv neu/docs neu/resources",
+		"build": "vite build && shx rm -rf build/unused",
+		"moveNeu": "shx rm -rf neu/resources && shx mv build neu && shx mv neu/build neu/resources",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
