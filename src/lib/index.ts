@@ -12,7 +12,7 @@ import spawns from "./spawns.json"
 import { Vec2, vec } from "./vec2.js"
 import { setRes } from "./writables.js"
 
-export const DEV = true
+export const DEV = false
 
 const TOTAL_SUITORS = 108
 const MAX_AT_ONCE = 50
